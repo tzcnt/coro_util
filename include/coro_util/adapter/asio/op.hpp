@@ -5,15 +5,17 @@
 
 #pragma once
 
-// boost::asio::awaitable<T> has a CLOSED await_transform: it only accepts other
-// asio awaitables, registered async operations, and this_coro::* tags, so the
-// coro_util queue/channel awaitables (a foreign awaiter) cannot be co_awaited
-// inside it directly. asio_queue_op() bridges the gap by presenting the queue
-// awaitable to asio as a regular async operation (via async_initiate +
-// use_awaitable), driven by a small detached coroutine whose own promise has no
-// await_transform and therefore CAN co_await the queue awaitable.
+// Both boost::asio::awaitable<T> and boost::asio::experimental::coro<> have a
+// CLOSED await_transform: each only accepts other asio coroutines of its own
+// kind, registered async operations, and this_coro::* tags, so the coro_util
+// queue/channel awaitables (a foreign awaiter) cannot be co_awaited inside them
+// directly. asio_queue_op() bridges the gap by presenting the queue awaitable to
+// asio as a regular (deferred) async operation, which BOTH coroutine types adopt
+// through their shared is_async_operation door. It is driven by a small detached
+// coroutine whose own promise has no await_transform and therefore CAN co_await
+// the queue awaitable.
 //
-// Usage, inside any boost::asio::awaitable<T> coroutine:
+// Usage, inside any boost::asio::awaitable<T> OR experimental::coro<> coroutine:
 //
 //   while (auto data = co_await coro_util::asio_queue_op(q.pull())) {
 //     consume(data.value());
@@ -21,12 +23,13 @@
 //
 //   co_await coro_util::asio_queue_op(q.push(value));
 //
-// Executor affinity: the completion is always posted back to the suspended asio
-// coroutine's associated executor (the io_context/strand it was co_spawned on),
-// so the coroutine resumes on its own executor no matter which thread woke the
-// queue waiter. Because affinity is restored here, the queues should be bound to
-// the inline continuation policy - which is exactly what the alias headers in
-// this folder do.
+// Executor affinity: the completion is always posted back to the suspended
+// coroutine's associated executor (the io_context/strand it was spawned on), so
+// the coroutine resumes on its own executor no matter which thread woke the queue
+// waiter. (Both asio coroutine types resume inline on the completion handler's
+// thread otherwise.) Because affinity is restored here, the queues should be
+// bound to the inline continuation policy - which is exactly what the alias
+// headers in this folder do.
 //
 // Lifetime note for push(): q.push(args...) binds references to args, so (as
 // with a direct co_await q.push(...)) those arguments must stay alive until the
@@ -35,9 +38,8 @@
 
 #include <boost/asio/associated_executor.hpp>
 #include <boost/asio/async_result.hpp>
-#include <boost/asio/awaitable.hpp>
+#include <boost/asio/deferred.hpp>
 #include <boost/asio/post.hpp>
-#include <boost/asio/use_awaitable.hpp>
 
 #include <coroutine>
 #include <exception>
@@ -100,8 +102,10 @@ driver_task drive_value(Awaitable Aw, Handler H) {
 
 /// Adapts any coro_util queue/channel awaitable (q.pull(), q.push(x),
 /// q.push_bulk(...)) so it can be co_awaited inside a boost::asio::awaitable<T>
-/// coroutine. Returns a boost::asio::awaitable that yields the same value the
-/// wrapped awaitable would. See the file header for usage and affinity notes.
+/// or boost::asio::experimental::coro<> coroutine. Returns a deferred async
+/// operation that yields the same value the wrapped awaitable would; the
+/// enclosing coroutine binds its own completion token when it co_awaits it. See
+/// the file header for usage and affinity notes.
 template <typename Awaitable> auto asio_queue_op(Awaitable Aw) {
   using R = asio_detail::result_t<Awaitable>;
   if constexpr (std::is_void_v<R>) {
@@ -109,14 +113,14 @@ template <typename Awaitable> auto asio_queue_op(Awaitable Aw) {
       [](auto Handler, Awaitable Aw) {
         asio_detail::drive_void(std::move(Aw), std::move(Handler));
       },
-      boost::asio::use_awaitable, std::move(Aw)
+      boost::asio::deferred, std::move(Aw)
     );
   } else {
     return boost::asio::async_initiate<void(R)>(
       [](auto Handler, Awaitable Aw) {
         asio_detail::drive_value(std::move(Aw), std::move(Handler));
       },
-      boost::asio::use_awaitable, std::move(Aw)
+      boost::asio::deferred, std::move(Aw)
     );
   }
 }
