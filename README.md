@@ -7,20 +7,19 @@
 | TooManyCooks | [link](include/coro_util/adapter/tmc) | ✅ | ✅ |
 | YACLib | [link](include/coro_util/adapter/yaclib) | ✅ | ❌ |
 | Boost.Cobalt | [link](include/coro_util/adapter/cobalt) | ✅ | ❌ |
-| Boost.Asio | [link](include/coro_util/adapter/asio) | ✅¹ | ❌ |
+| Asio / Boost.Asio | [link](include/coro_util/adapter/asio) | ✅¹ | ❌ |
 | concurrencpp | [link](include/coro_util/adapter/concurrencpp) | ❌ | ❌ |
 | cppcoro | [link](include/coro_util/adapter/cppcoro) | ❌ | ❌ |
 | libcoro | [link](include/coro_util/adapter/libcoro) | ❌ | ❌ |
 
-¹ Covers both `boost::asio::awaitable<T>` and
-`boost::asio::experimental::coro<>`. Both have a closed `await_transform` and
-cannot `co_await` a foreign awaitable directly, so each queue/channel operation
-must be wrapped at the call site: `co_await coro_util::asio_queue_op(q.pull())`.
-The one wrapper serves both coroutine types and restores executor affinity (the
-coroutine always resumes on its own `io_context`/strand). See the
-[adapter](include/coro_util/adapter/asio) for details. If you can target
-[Boost.Cobalt](include/coro_util/adapter/cobalt) instead — it runs on the same
-Asio executors — you get the unmodified `co_await q.pull()` API.
+¹ Works with both standalone Asio (include `adapter/asio/op.hpp`, `asio::`) and
+Boost.Asio (include `adapter/asio/boost_op.hpp`, `boost::asio::`), and covers
+both the `awaitable<T>` and `experimental::coro<>` coroutine types of each. All
+of these have a closed `await_transform` and cannot `co_await` a foreign
+awaitable directly, so each queue/channel operation must be wrapped at the call
+site: `co_await coro_util::asio_queue_op(q.pull())`. The one wrapper serves every
+case and restores executor affinity (the coroutine always resumes on its own
+`io_context`/strand).
 
 ## Adapting for Another Library
 Want to use these queues with another library that doesn't have an adapter yet? Simply follow these instructions:

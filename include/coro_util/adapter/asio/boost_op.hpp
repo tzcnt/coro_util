@@ -5,13 +5,13 @@
 
 #pragma once
 
-// Standalone-Asio version of the queue/channel adapter. For Boost.Asio include
-// "boost_op.hpp" instead - it is identical but in the boost::asio namespace.
-// Include exactly one of the two (they define the same coro_util symbols).
+// Boost.Asio version of the queue/channel adapter. For standalone Asio include
+// "op.hpp" instead - it is identical but in the asio namespace. Include exactly
+// one of the two (they define the same coro_util symbols).
 //
-// Both asio::awaitable<T> and asio::experimental::coro<> have a CLOSED
-// await_transform: each only accepts other asio coroutines of its own kind,
-// registered async operations, and this_coro::* tags, so the coro_util
+// Both boost::asio::awaitable<T> and boost::asio::experimental::coro<> have a
+// CLOSED await_transform: each only accepts other asio coroutines of its own
+// kind, registered async operations, and this_coro::* tags, so the coro_util
 // queue/channel awaitables (a foreign awaiter) cannot be co_awaited inside them
 // directly. asio_queue_op() bridges the gap by presenting the queue awaitable to
 // asio as a regular (deferred) async operation, which BOTH coroutine types adopt
@@ -19,7 +19,7 @@
 // coroutine whose own promise has no await_transform and therefore CAN co_await
 // the queue awaitable.
 //
-// Usage, inside any asio::awaitable<T> OR asio::experimental::coro<> coroutine:
+// Usage, inside any boost::asio::awaitable<T> OR experimental::coro<> coroutine:
 //
 //   while (auto data = co_await coro_util::asio_queue_op(q.pull())) {
 //     consume(data.value());
@@ -40,10 +40,10 @@
 // co_await completes. Pass lvalues that outlive the statement, or temporaries
 // (whose lifetime is extended across the co_await), not dangling references.
 
-#include <asio/associated_executor.hpp>
-#include <asio/async_result.hpp>
-#include <asio/deferred.hpp>
-#include <asio/post.hpp>
+#include <boost/asio/associated_executor.hpp>
+#include <boost/asio/async_result.hpp>
+#include <boost/asio/deferred.hpp>
+#include <boost/asio/post.hpp>
 
 #include <coroutine>
 #include <exception>
@@ -54,10 +54,10 @@ namespace coro_util {
 namespace asio_detail {
 
 // Detached coroutine used to drive a coro_util queue awaitable. Unlike
-// asio::awaitable<T>, this promise defines NO await_transform, so an arbitrary
-// awaiter can be co_awaited inside it. It owns nothing and self-destroys on
-// completion (suspend_never at both ends), so once its single co_await resumes
-// and the completion handler is posted, its frame is freed.
+// boost::asio::awaitable<T>, this promise defines NO await_transform, so an
+// arbitrary awaiter can be co_awaited inside it. It owns nothing and
+// self-destroys on completion (suspend_never at both ends), so once its single
+// co_await resumes and the completion handler is posted, its frame is freed.
 struct driver_task {
   struct promise_type {
     driver_task get_return_object() noexcept { return {}; }
@@ -87,17 +87,17 @@ using result_t = decltype(std::declval<awaiter_t<Awaitable>&>().await_resume());
 // Driver for awaitables whose co_await yields void (e.g. push()/push_bulk()).
 template <typename Awaitable, typename Handler>
 driver_task drive_void(Awaitable Aw, Handler H) {
-  auto Ex = asio::get_associated_executor(H);
+  auto Ex = boost::asio::get_associated_executor(H);
   co_await std::move(Aw);
-  asio::post(Ex, [H = std::move(H)]() mutable { std::move(H)(); });
+  boost::asio::post(Ex, [H = std::move(H)]() mutable { std::move(H)(); });
 }
 
 // Driver for awaitables whose co_await yields a value (e.g. pull()'s scope).
 template <typename Awaitable, typename Handler>
 driver_task drive_value(Awaitable Aw, Handler H) {
-  auto Ex = asio::get_associated_executor(H);
+  auto Ex = boost::asio::get_associated_executor(H);
   auto Result = co_await std::move(Aw);
-  asio::post(Ex, [H = std::move(H), Result = std::move(Result)]() mutable {
+  boost::asio::post(Ex, [H = std::move(H), Result = std::move(Result)]() mutable {
     std::move(H)(std::move(Result));
   });
 }
@@ -105,27 +105,27 @@ driver_task drive_value(Awaitable Aw, Handler H) {
 } // namespace asio_detail
 
 /// Adapts any coro_util queue/channel awaitable (q.pull(), q.push(x),
-/// q.push_bulk(...)) so it can be co_awaited inside an asio::awaitable<T> or
-/// asio::experimental::coro<> coroutine. Returns a deferred async operation that
-/// yields the same value the wrapped awaitable would; the enclosing coroutine
-/// binds its own completion token when it co_awaits it. See the file header for
-/// usage and affinity notes.
+/// q.push_bulk(...)) so it can be co_awaited inside a boost::asio::awaitable<T>
+/// or boost::asio::experimental::coro<> coroutine. Returns a deferred async
+/// operation that yields the same value the wrapped awaitable would; the
+/// enclosing coroutine binds its own completion token when it co_awaits it. See
+/// the file header for usage and affinity notes.
 template <typename Awaitable> auto asio_queue_op(Awaitable Aw) {
   using R = asio_detail::result_t<Awaitable>;
   // A non-const lvalue deferred token, named so it binds to async_initiate's
   // token parameter across asio versions (the explicit-CompletionToken overload
-  // takes it by non-const lvalue reference; the const global asio::deferred and
-  // the newer signature-deduced overload are not portable across versions).
-  asio::deferred_t Token = asio::deferred;
+  // takes it by non-const lvalue reference; the const global boost::asio::deferred
+  // and the newer signature-deduced overload are not portable across versions).
+  boost::asio::deferred_t Token = boost::asio::deferred;
   if constexpr (std::is_void_v<R>) {
-    return asio::async_initiate<asio::deferred_t, void()>(
+    return boost::asio::async_initiate<boost::asio::deferred_t, void()>(
       [](auto Handler, Awaitable Aw) {
         asio_detail::drive_void(std::move(Aw), std::move(Handler));
       },
       Token, std::move(Aw)
     );
   } else {
-    return asio::async_initiate<asio::deferred_t, void(R)>(
+    return boost::asio::async_initiate<boost::asio::deferred_t, void(R)>(
       [](auto Handler, Awaitable Aw) {
         asio_detail::drive_value(std::move(Aw), std::move(Handler));
       },
