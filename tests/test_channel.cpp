@@ -10,7 +10,7 @@
 #include <thread>
 #include <utility>
 
-#define CATEGORY test_channel_standalone
+#define CATEGORY test_channel
 
 class CATEGORY : public testing::Test {
 protected:

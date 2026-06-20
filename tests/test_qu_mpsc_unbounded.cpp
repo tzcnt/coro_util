@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#define CATEGORY test_qu_mpsc_unbounded_standalone
+#define CATEGORY test_qu_mpsc_unbounded
 
 class CATEGORY : public testing::Test {
 protected:

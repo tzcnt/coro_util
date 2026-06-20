@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#define CATEGORY test_qu_mpsc_bounded_standalone
+#define CATEGORY test_qu_mpsc_bounded
 
 class CATEGORY : public testing::Test {
 protected:

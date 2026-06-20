@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#define CATEGORY test_qu_spsc_bounded_standalone
+#define CATEGORY test_qu_spsc_bounded
 
 class CATEGORY : public testing::Test {
 protected:
