@@ -11,6 +11,8 @@
 
 #define CATEGORY test_qu_mpsc_bounded
 
+namespace {
+
 class CATEGORY : public testing::Test {
 protected:
   static void SetUpTestSuite() { tmc::cpu_executor().set_thread_count(4).init(); }
@@ -41,32 +43,32 @@ template <bool ElementPadding, typename Executor> void do_basic_test(Executor& E
         size_t sum;
       };
 
-      auto chan =
+      auto queue =
         coro_util::qu_mpsc_bounded<size_t, qu_config<ElementPadding>>{TEST_CAPACITY};
 
       auto results = co_await tmc::spawn_tuple(
-        [](auto& Chan) -> tmc::task<size_t> {
+        [](auto& Queue) -> tmc::task<size_t> {
           size_t i = 0;
           for (; i < NITEMS; ++i) {
-            bool ok = co_await Chan.push(i);
+            bool ok = co_await Queue.push(i);
             EXPECT_TRUE(ok);
           }
-          bool ok = co_await Chan.push(MPSC_TEST_SENTINEL);
+          bool ok = co_await Queue.push(MPSC_TEST_SENTINEL);
           EXPECT_TRUE(ok);
           co_return i;
-        }(chan),
-        [](auto& Chan) -> tmc::task<result> {
+        }(queue),
+        [](auto& Queue) -> tmc::task<result> {
           size_t count = 0;
           size_t sum = 0;
           while (true) {
-            auto v = co_await Chan.pull();
+            auto v = co_await Queue.pull();
             if (*v == MPSC_TEST_SENTINEL) {
               co_return result{count, sum};
             }
             ++count;
             sum += *v;
           }
-        }(chan)
+        }(queue)
       );
       auto& prod = std::get<0>(results);
       auto& cons = std::get<1>(results);
@@ -82,23 +84,23 @@ template <bool ElementPadding, typename Executor> void do_basic_test(Executor& E
       // destroy queue with data remaining inside (consumer never drained)
       std::atomic<size_t> count{0};
       {
-        auto chan =
+        auto queue =
           coro_util::qu_mpsc_bounded<destructor_counter, qu_config<ElementPadding>>{
             TEST_CAPACITY
           };
         for (size_t i = 0; i < 12; ++i) {
-          bool ok = co_await chan.push(destructor_counter{&count});
+          bool ok = co_await queue.push(destructor_counter{&count});
           EXPECT_TRUE(ok);
         }
 
         for (size_t i = 0; i < 7; ++i) {
-          auto v = chan.try_pull();
+          auto v = queue.try_pull();
           EXPECT_TRUE(static_cast<bool>(v));
         }
 
         EXPECT_EQ(count.load(), 7);
       }
-      // Now chan goes out of scope; remaining data's destructors are called
+      // Now queue goes out of scope; remaining data's destructors are called
       EXPECT_EQ(count.load(), 12);
     }
   }());
@@ -118,30 +120,30 @@ TEST_F(CATEGORY, many_producers) {
     static constexpr size_t ITEMS_PER_PRODUCER = 500;
     static constexpr size_t TOTAL = NPRODUCERS * ITEMS_PER_PRODUCER;
 
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{32};
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{32};
 
     std::vector<tmc::task<void>> producers;
     producers.reserve(NPRODUCERS);
     for (size_t p = 0; p < NPRODUCERS; ++p) {
-      producers.emplace_back([](auto& Chan, size_t Base) -> tmc::task<void> {
+      producers.emplace_back([](auto& Queue, size_t Base) -> tmc::task<void> {
         for (size_t i = 0; i < ITEMS_PER_PRODUCER; ++i) {
-          bool ok = co_await Chan.push(Base + i);
+          bool ok = co_await Queue.push(Base + i);
           EXPECT_TRUE(ok);
         }
         co_return;
-      }(chan, p * ITEMS_PER_PRODUCER));
+      }(queue, p * ITEMS_PER_PRODUCER));
     }
 
     auto results = co_await tmc::spawn_tuple(
       tmc::spawn_many(producers.data(), producers.size()),
-      [](auto& Chan) -> tmc::task<size_t> {
+      [](auto& Queue) -> tmc::task<size_t> {
         size_t sum = 0;
         for (size_t i = 0; i < TOTAL; ++i) {
-          auto v = co_await Chan.pull();
+          auto v = co_await Queue.pull();
           sum += *v;
         }
         co_return sum;
-      }(chan)
+      }(queue)
     );
 
     size_t expectedSum = 0;
@@ -160,30 +162,30 @@ TEST_F(CATEGORY, tiny_capacity_many_producers) {
     static constexpr size_t ITEMS_PER_PRODUCER = 200;
     static constexpr size_t TOTAL = NPRODUCERS * ITEMS_PER_PRODUCER;
 
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{1};
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{1};
 
     std::vector<tmc::task<void>> producers;
     producers.reserve(NPRODUCERS);
     for (size_t p = 0; p < NPRODUCERS; ++p) {
-      producers.emplace_back([](auto& Chan, size_t Base) -> tmc::task<void> {
+      producers.emplace_back([](auto& Queue, size_t Base) -> tmc::task<void> {
         for (size_t i = 0; i < ITEMS_PER_PRODUCER; ++i) {
-          bool ok = co_await Chan.push(Base + i);
+          bool ok = co_await Queue.push(Base + i);
           EXPECT_TRUE(ok);
         }
         co_return;
-      }(chan, p * ITEMS_PER_PRODUCER));
+      }(queue, p * ITEMS_PER_PRODUCER));
     }
 
     auto results = co_await tmc::spawn_tuple(
       tmc::spawn_many(producers.data(), producers.size()),
-      [](auto& Chan) -> tmc::task<size_t> {
+      [](auto& Queue) -> tmc::task<size_t> {
         size_t sum = 0;
         for (size_t i = 0; i < TOTAL; ++i) {
-          auto v = co_await Chan.pull();
+          auto v = co_await Queue.pull();
           sum += *v;
         }
         co_return sum;
-      }(chan)
+      }(queue)
     );
 
     size_t expectedSum = 0;
@@ -200,24 +202,24 @@ TEST_F(CATEGORY, try_pull_basic) {
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
     using qerr = coro_util::qu_err;
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
 
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_EQ(qerr::EMPTY, v.status());
       EXPECT_FALSE(static_cast<bool>(v));
     }
 
     static constexpr size_t NITEMS = 10;
     for (size_t i = 0; i < NITEMS; ++i) {
-      bool ok = co_await chan.push(i);
+      bool ok = co_await queue.push(i);
       EXPECT_TRUE(ok);
     }
 
     size_t sum = 0;
     size_t count = 0;
     for (size_t i = 0; i < NITEMS; ++i) {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_EQ(qerr::OK, v.status());
       sum += *v;
       ++count;
@@ -230,7 +232,7 @@ TEST_F(CATEGORY, try_pull_basic) {
     EXPECT_EQ(expectedSum, sum);
 
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_EQ(qerr::EMPTY, v.status());
     }
     co_return;
@@ -255,40 +257,40 @@ TEST_F(CATEGORY, non_movable_type) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_mpsc_bounded<non_movable, qu_config<true>>{TEST_CAPACITY};
+    auto queue = coro_util::qu_mpsc_bounded<non_movable, qu_config<true>>{TEST_CAPACITY};
 
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_FALSE(static_cast<bool>(v));
     }
 
     bool ok;
-    ok = co_await chan.push(1, 2);
+    ok = co_await queue.push(1, 2);
     EXPECT_TRUE(ok);
-    ok = co_await chan.push(3, 4);
+    ok = co_await queue.push(3, 4);
     EXPECT_TRUE(ok);
-    ok = co_await chan.push(5, 6);
+    ok = co_await queue.push(5, 6);
     EXPECT_TRUE(ok);
 
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_TRUE(static_cast<bool>(v));
       EXPECT_EQ(3, v->value);
     }
 
     {
-      auto v = co_await chan.pull();
+      auto v = co_await queue.pull();
       EXPECT_EQ(7, v->value);
     }
 
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_TRUE(static_cast<bool>(v));
       EXPECT_EQ(11, v->value);
     }
 
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_FALSE(static_cast<bool>(v));
     }
 
@@ -302,15 +304,15 @@ TEST_F(CATEGORY, try_pull_closed_empty) {
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
     using qerr = coro_util::qu_err;
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
-    EXPECT_TRUE(chan.empty());
-    chan.close();
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
+    EXPECT_TRUE(queue.empty());
+    queue.close();
 
     // A closed-and-drained queue is not considered empty; the consumer should
     // pull and observe the CLOSED status.
-    EXPECT_FALSE(chan.empty());
+    EXPECT_FALSE(queue.empty());
 
-    auto v = chan.try_pull();
+    auto v = queue.try_pull();
     EXPECT_EQ(qerr::CLOSED, v.status());
     EXPECT_FALSE(static_cast<bool>(v));
     co_return;
@@ -322,10 +324,10 @@ TEST_F(CATEGORY, close_idempotent) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
-    chan.close();
-    chan.close();
-    chan.close();
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
+    queue.close();
+    queue.close();
+    queue.close();
     co_return;
   }());
 }
@@ -335,13 +337,13 @@ TEST_F(CATEGORY, pull_after_close_returns_empty) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
-    chan.close();
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
+    queue.close();
 
-    auto v = co_await chan.pull();
+    auto v = co_await queue.pull();
     EXPECT_FALSE(static_cast<bool>(v));
 
-    auto v2 = co_await chan.pull();
+    auto v2 = co_await queue.pull();
     EXPECT_FALSE(static_cast<bool>(v2));
     co_return;
   }());
@@ -352,17 +354,17 @@ TEST_F(CATEGORY, close_wakes_suspended_consumer) {
   tmc::ex_cpu_st exec;
   exec.init();
   test_async_main(exec, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
 
-    auto consumer = tmc::spawn([](auto& Chan) -> tmc::task<bool> {
-                      auto v = co_await Chan.pull();
+    auto consumer = tmc::spawn([](auto& Queue) -> tmc::task<bool> {
+                      auto v = co_await Queue.pull();
                       co_return static_cast<bool>(v);
-                    }(chan))
+                    }(queue))
                       .fork();
 
     // Force the consumer to run first and suspend on the empty queue.
     co_await tmc::reschedule();
-    chan.close();
+    queue.close();
 
     bool got_value = co_await std::move(consumer);
     EXPECT_FALSE(got_value); // consumer woken by close with empty scope
@@ -374,20 +376,20 @@ TEST_F(CATEGORY, close_wakes_suspended_consumer) {
 TEST_F(CATEGORY, drain_then_close) {
   test_async_main(ex(), []() -> tmc::task<void> {
     using qerr = coro_util::qu_err;
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
 
     static constexpr size_t NITEMS = 50;
     for (size_t i = 0; i < NITEMS; ++i) {
-      bool ok = co_await chan.push(i);
+      bool ok = co_await queue.push(i);
       EXPECT_TRUE(ok);
     }
-    chan.close();
+    queue.close();
 
     // Drain via pull().
     size_t sum = 0;
     size_t count = 0;
     while (true) {
-      auto v = co_await chan.pull();
+      auto v = co_await queue.pull();
       if (!v) {
         break;
       }
@@ -402,7 +404,7 @@ TEST_F(CATEGORY, drain_then_close) {
     EXPECT_EQ(expectedSum, sum);
 
     // Subsequent try_pull yields CLOSED.
-    auto v = chan.try_pull();
+    auto v = queue.try_pull();
     EXPECT_EQ(qerr::CLOSED, v.status());
     co_return;
   }());
@@ -412,19 +414,19 @@ TEST_F(CATEGORY, drain_then_close) {
 TEST_F(CATEGORY, close_resume_inline_no_waiting_consumer) {
   test_async_main(ex(), []() -> tmc::task<void> {
     using qerr = coro_util::qu_err;
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
 
     for (size_t i = 0; i < 5; ++i) {
-      bool ok = co_await chan.push(i);
+      bool ok = co_await queue.push(i);
       EXPECT_TRUE(ok);
     }
 
-    chan.close_resume_inline();
+    queue.close_resume_inline();
 
     size_t sum = 0;
     size_t count = 0;
     while (true) {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       if (v.status() == qerr::OK) {
         sum += *v;
         ++count;
@@ -446,14 +448,14 @@ TEST_F(CATEGORY, push_after_close_returns_false) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
 
-    chan.close();
+    queue.close();
 
-    bool ok = co_await chan.push(size_t{123});
+    bool ok = co_await queue.push(size_t{123});
     EXPECT_FALSE(ok);
 
-    auto v = co_await chan.pull();
+    auto v = co_await queue.pull();
     EXPECT_FALSE(static_cast<bool>(v));
     co_return;
   }());
@@ -464,17 +466,17 @@ TEST_F(CATEGORY, close_resume_inline_wakes_suspended_consumer) {
   tmc::ex_cpu_st exec;
   exec.init();
   test_async_main(exec, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
 
-    auto consumer = tmc::spawn([](auto& Chan) -> tmc::task<bool> {
-                      auto v = co_await Chan.pull();
+    auto consumer = tmc::spawn([](auto& Queue) -> tmc::task<bool> {
+                      auto v = co_await Queue.pull();
                       co_return static_cast<bool>(v);
-                    }(chan))
+                    }(queue))
                       .fork();
 
     // Force the consumer to run first and suspend on the empty queue.
     co_await tmc::reschedule();
-    chan.close_resume_inline();
+    queue.close_resume_inline();
 
     bool got_value = co_await std::move(consumer);
     EXPECT_FALSE(got_value);
@@ -488,19 +490,19 @@ TEST_F(CATEGORY, close_with_data_at_cutoff_slot) {
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
     using qerr = coro_util::qu_err;
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{1};
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{1};
 
-    bool ok = co_await chan.push(size_t{7});
+    bool ok = co_await queue.push(size_t{7});
     EXPECT_TRUE(ok);
-    chan.close();
+    queue.close();
 
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_EQ(qerr::OK, v.status());
       EXPECT_EQ(7u, *v);
     }
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_EQ(qerr::CLOSED, v.status());
     }
     co_return;
@@ -508,7 +510,7 @@ TEST_F(CATEGORY, close_with_data_at_cutoff_slot) {
 }
 
 // Verify that ConsumerCanSuspend = false compiles and try_pull works.
-struct chan_config_no_suspend : coro_util::qu_mpsc_bounded_default_config {
+struct queue_config_no_suspend : coro_util::qu_mpsc_bounded_default_config {
   static inline constexpr bool ConsumerCanSuspend = false;
 };
 
@@ -516,23 +518,24 @@ TEST_F(CATEGORY, try_pull_no_suspend) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_mpsc_bounded<size_t, chan_config_no_suspend>{TEST_CAPACITY};
+    auto queue =
+      coro_util::qu_mpsc_bounded<size_t, queue_config_no_suspend>{TEST_CAPACITY};
 
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_FALSE(static_cast<bool>(v));
     }
 
     static constexpr size_t NITEMS = 10;
     for (size_t i = 0; i < NITEMS; ++i) {
-      bool ok = co_await chan.push(i);
+      bool ok = co_await queue.push(i);
       EXPECT_TRUE(ok);
     }
 
     size_t sum = 0;
     size_t count = 0;
     for (size_t i = 0; i < NITEMS; ++i) {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_TRUE(static_cast<bool>(v));
       sum += *v;
       ++count;
@@ -545,7 +548,7 @@ TEST_F(CATEGORY, try_pull_no_suspend) {
     EXPECT_EQ(expectedSum, sum);
 
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_FALSE(static_cast<bool>(v));
     }
     co_return;
@@ -560,32 +563,32 @@ TEST_F(CATEGORY, stress_many_producers_small_capacity) {
     static constexpr size_t ITEMS_PER_PRODUCER = 100;
     static constexpr size_t TOTAL = NPRODUCERS * ITEMS_PER_PRODUCER;
 
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{4};
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{4};
 
     std::vector<tmc::task<void>> producers;
     producers.reserve(NPRODUCERS);
     for (size_t p = 0; p < NPRODUCERS; ++p) {
-      producers.emplace_back([](auto& Chan, size_t Base) -> tmc::task<void> {
+      producers.emplace_back([](auto& Queue, size_t Base) -> tmc::task<void> {
         for (size_t i = 0; i < ITEMS_PER_PRODUCER; ++i) {
-          bool ok = co_await Chan.push(Base + i);
+          bool ok = co_await Queue.push(Base + i);
           EXPECT_TRUE(ok);
         }
         co_return;
-      }(chan, p * ITEMS_PER_PRODUCER));
+      }(queue, p * ITEMS_PER_PRODUCER));
     }
 
     auto results = co_await tmc::spawn_tuple(
       tmc::spawn_many(producers.data(), producers.size()),
-      [](auto& Chan) -> tmc::task<std::pair<size_t, size_t>> {
+      [](auto& Queue) -> tmc::task<std::pair<size_t, size_t>> {
         size_t sum = 0;
         size_t count = 0;
         for (size_t i = 0; i < TOTAL; ++i) {
-          auto v = co_await Chan.pull();
+          auto v = co_await Queue.pull();
           sum += *v;
           ++count;
         }
         co_return std::pair<size_t, size_t>{count, sum};
-      }(chan)
+      }(queue)
     );
 
     auto& cons = std::get<1>(results);
@@ -604,7 +607,7 @@ TEST_F(CATEGORY, push_race_with_close) {
     static constexpr size_t NPRODUCERS = 4;
     static constexpr size_t ITEMS_PER_PRODUCER = 200;
 
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{16};
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{16};
 
     std::atomic<size_t> total_enqueued{0};
 
@@ -612,41 +615,41 @@ TEST_F(CATEGORY, push_race_with_close) {
     producers.reserve(NPRODUCERS);
     for (size_t p = 0; p < NPRODUCERS; ++p) {
       producers.emplace_back(
-        [](auto& Chan, size_t Base, std::atomic<size_t>& Total) -> tmc::task<void> {
+        [](auto& Queue, size_t Base, std::atomic<size_t>& Total) -> tmc::task<void> {
           for (size_t i = 0; i < ITEMS_PER_PRODUCER; ++i) {
-            bool ok = co_await Chan.push(Base + i);
+            bool ok = co_await Queue.push(Base + i);
             if (ok) {
               ++Total;
             }
           }
           co_return;
-        }(chan, p * ITEMS_PER_PRODUCER, total_enqueued)
+        }(queue, p * ITEMS_PER_PRODUCER, total_enqueued)
       );
     }
 
     auto results = co_await tmc::spawn_tuple(
       tmc::spawn_many(producers.data(), producers.size()),
-      [](auto& Chan) -> tmc::task<size_t> {
+      [](auto& Queue) -> tmc::task<size_t> {
         // Drain a bit, then close mid-stream.
         size_t drained = 0;
         for (size_t i = 0; i < 100; ++i) {
-          auto v = co_await Chan.pull();
+          auto v = co_await Queue.pull();
           if (!v) {
             co_return drained;
           }
           ++drained;
         }
         // Close: some in-flight pushes will see CLOSED and return false.
-        Chan.close();
+        Queue.close();
         // Drain the rest.
         while (true) {
-          auto v = co_await Chan.pull();
+          auto v = co_await Queue.pull();
           if (!v) {
             co_return drained;
           }
           ++drained;
         }
-      }(chan)
+      }(queue)
     );
 
     size_t drained = std::get<1>(results);
@@ -659,24 +662,24 @@ TEST_F(CATEGORY, empty_method) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
-    EXPECT_TRUE(chan.empty());
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
+    EXPECT_TRUE(queue.empty());
 
-    bool ok = co_await chan.push(size_t{7});
+    bool ok = co_await queue.push(size_t{7});
     EXPECT_TRUE(ok);
-    EXPECT_FALSE(chan.empty());
+    EXPECT_FALSE(queue.empty());
 
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_TRUE(static_cast<bool>(v));
       EXPECT_EQ(7u, *v);
     }
-    EXPECT_TRUE(chan.empty());
+    EXPECT_TRUE(queue.empty());
 
     // After close(), the drained queue reports non-empty so the consumer will
     // pull and observe the CLOSED status.
-    chan.close();
-    EXPECT_FALSE(chan.empty());
+    queue.close();
+    EXPECT_FALSE(queue.empty());
     co_return;
   }());
 }
@@ -685,22 +688,24 @@ TEST_F(CATEGORY, empty_when_drained) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
+    auto queue = coro_util::qu_mpsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
 
-    bool ok = co_await chan.push(size_t{7});
+    bool ok = co_await queue.push(size_t{7});
     EXPECT_TRUE(ok);
-    EXPECT_FALSE(chan.empty());
+    EXPECT_FALSE(queue.empty());
 
-    chan.close();
-    EXPECT_FALSE(chan.empty());
+    queue.close();
+    EXPECT_FALSE(queue.empty());
 
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_TRUE(static_cast<bool>(v));
       EXPECT_EQ(7u, *v);
     }
     // closed-and-drained == non-empty
-    EXPECT_FALSE(chan.empty());
+    EXPECT_FALSE(queue.empty());
     co_return;
   }());
 }
+
+} // namespace

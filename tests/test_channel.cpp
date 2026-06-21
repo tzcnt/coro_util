@@ -12,6 +12,8 @@
 
 #define CATEGORY test_channel
 
+namespace {
+
 class CATEGORY : public testing::Test {
 protected:
   static void SetUpTestSuite() { tmc::cpu_executor().init(); }
@@ -753,6 +755,54 @@ TEST_F(CATEGORY, token_copy_move) {
       EXPECT_TRUE(v.has_value());
       EXPECT_EQ(v.value(), 4);
     }
+
+    // Test move assignment between two tokens of the SAME channel, where the
+    // destination already holds its own hazard pointer. The more-efficient path
+    // keeps the destination's hazptr and releases the source's.
+    {
+      auto tokA = chan1.new_token();
+      auto tokB = chan1.new_token();
+      chan1.post(5u);
+      {
+        auto v = co_await tokA.pull(); // tokA acquires its own hazard pointer
+        EXPECT_TRUE(v.has_value());
+        EXPECT_EQ(v.value(), 5);
+      }
+      chan1.post(6u);
+      {
+        auto v = co_await tokB.pull(); // tokB acquires its own hazard pointer
+        EXPECT_TRUE(v.has_value());
+        EXPECT_EQ(v.value(), 6);
+      }
+      tokA = std::move(tokB); // same channel: tokA keeps its hazptr, frees tokB's
+      chan1.post(7u);
+      {
+        auto v = co_await tokA.pull();
+        EXPECT_TRUE(v.has_value());
+        EXPECT_EQ(v.value(), 7);
+      }
+    }
+
+    // Test move assignment between two tokens of the SAME channel, where the
+    // destination has not yet acquired a hazard pointer (a fresh token), so it
+    // adopts the source's.
+    {
+      auto tokC = chan1.new_token(); // no operations yet: haz_ptr is null
+      auto tokD = chan1.new_token();
+      chan1.post(8u);
+      {
+        auto v = co_await tokD.pull(); // tokD acquires its own hazard pointer
+        EXPECT_TRUE(v.has_value());
+        EXPECT_EQ(v.value(), 8);
+      }
+      tokC = std::move(tokD); // same channel: tokC adopts tokD's hazptr
+      chan1.post(9u);
+      {
+        auto v = co_await tokC.pull();
+        EXPECT_TRUE(v.has_value());
+        EXPECT_EQ(v.value(), 9);
+      }
+    }
   }());
 }
 
@@ -891,5 +941,7 @@ TEST_F(CATEGORY, close_empty_channel_external_thread) {
   auto chan = coro_util::make_channel<size_t, chan_config<true>>();
   chan.close();
 }
+
+} // namespace
 
 #undef CATEGORY

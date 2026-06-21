@@ -12,6 +12,8 @@
 
 #define CATEGORY test_qu_mpsc_unbounded
 
+namespace {
+
 class CATEGORY : public testing::Test {
 protected:
   static void SetUpTestSuite() { tmc::cpu_executor().set_thread_count(4).init(); }
@@ -1036,5 +1038,7 @@ TEST_F(CATEGORY, post_bulk_empty_all_forms) {
     co_return;
   }());
 }
+
+} // namespace
 
 #undef CATEGORY

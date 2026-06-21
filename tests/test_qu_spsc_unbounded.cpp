@@ -12,6 +12,8 @@
 
 #define CATEGORY test_qu_spsc_unbounded
 
+namespace {
+
 class CATEGORY : public testing::Test {
 protected:
   static void SetUpTestSuite() { tmc::cpu_executor().set_thread_count(2).init(); }
@@ -56,7 +58,7 @@ struct spsc_destructor_counter {
 };
 
 // multiple tests in one to leverage the configuration options in one place
-template <bool ElementPadding, typename Executor> void do_chan_test(Executor& Exec) {
+template <bool ElementPadding, typename Executor> void do_queue_test(Executor& Exec) {
   test_async_main(Exec, []() -> tmc::task<void> {
     {
       // general test - single push
@@ -66,29 +68,29 @@ template <bool ElementPadding, typename Executor> void do_chan_test(Executor& Ex
         size_t sum;
       };
 
-      auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<ElementPadding>>{};
+      auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<ElementPadding>>{};
 
       auto results = co_await tmc::spawn_tuple(
-        [](auto& Chan) -> tmc::task<size_t> {
+        [](auto& Queue) -> tmc::task<size_t> {
           size_t i = 0;
           for (; i < NITEMS; ++i) {
-            Chan.post(i);
+            Queue.post(i);
           }
-          Chan.post(SPSC_TEST_SENTINEL);
+          Queue.post(SPSC_TEST_SENTINEL);
           co_return i;
-        }(chan),
-        [](auto& Chan) -> tmc::task<result> {
+        }(queue),
+        [](auto& Queue) -> tmc::task<result> {
           size_t count = 0;
           size_t sum = 0;
           while (true) {
-            auto v = co_await Chan.pull();
+            auto v = co_await Queue.pull();
             if (*v == SPSC_TEST_SENTINEL) {
               co_return result{count, sum};
             }
             ++count;
             sum += *v;
           }
-        }(chan)
+        }(queue)
       );
       auto& prod = std::get<0>(results);
       auto& cons = std::get<1>(results);
@@ -108,34 +110,34 @@ template <bool ElementPadding, typename Executor> void do_chan_test(Executor& Ex
         size_t sum;
       };
 
-      auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<ElementPadding>>{};
+      auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<ElementPadding>>{};
 
       auto results = co_await tmc::spawn_tuple(
-        [](auto& Chan) -> tmc::task<size_t> {
+        [](auto& Queue) -> tmc::task<size_t> {
           size_t i = 0;
           for (; i < NITEMS; i += (NITEMS / 10)) {
             size_t j = i + (NITEMS / 10);
             if (j > NITEMS) {
               j = NITEMS;
             }
-            Chan.post_bulk(std::ranges::views::iota(i).begin(), j - i);
+            Queue.post_bulk(std::ranges::views::iota(i).begin(), j - i);
           }
           co_return i;
-        }(chan),
-        [](auto& Chan) -> tmc::task<result> {
+        }(queue),
+        [](auto& Queue) -> tmc::task<result> {
           size_t count = 0;
           size_t sum = 0;
           for (size_t i = 0; i < NITEMS; ++i) {
-            auto v = Chan.try_pull();
+            auto v = Queue.try_pull();
             while (!v) {
               co_await tmc::reschedule();
-              v = Chan.try_pull();
+              v = Queue.try_pull();
             }
             ++count;
             sum += *v;
           }
           co_return result{count, sum};
-        }(chan)
+        }(queue)
       );
       auto& prod = std::get<0>(results);
       auto& cons = std::get<1>(results);
@@ -148,31 +150,31 @@ template <bool ElementPadding, typename Executor> void do_chan_test(Executor& Ex
       EXPECT_EQ(expectedSum, cons.sum);
     }
     {
-      // destroy chan with data remaining inside
+      // destroy queue with data remaining inside
       std::atomic<size_t> count{0};
       {
-        auto chan = coro_util::qu_spsc_unbounded<
+        auto queue = coro_util::qu_spsc_unbounded<
           spsc_destructor_counter, qu_config<ElementPadding>>{};
         for (size_t i = 0; i < 12; ++i) {
-          chan.post(spsc_destructor_counter{&count});
+          queue.post(spsc_destructor_counter{&count});
         }
 
         for (size_t i = 0; i < 7; ++i) {
-          auto v = chan.try_pull();
+          auto v = queue.try_pull();
           EXPECT_TRUE(static_cast<bool>(v));
         }
 
         EXPECT_EQ(count.load(), 7);
       }
-      // Now chan goes out of scope; remaining data's destructors are called
+      // Now queue goes out of scope; remaining data's destructors are called
       EXPECT_EQ(count.load(), 12);
     }
   }());
 }
 
 TEST_F(CATEGORY, config_sweep) {
-  do_chan_test<true>(ex());
-  do_chan_test<false>(ex());
+  do_queue_test<true>(ex());
+  do_queue_test<false>(ex());
 }
 
 // Test post_bulk of 0 items
@@ -180,22 +182,22 @@ TEST_F(CATEGORY, post_bulk_none) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
     size_t i = 0;
     for (; i < 4; ++i) {
-      chan.post_bulk(&i, 0);
-      chan.post_bulk(std::ranges::views::iota(i).begin(), 0);
-      chan.post(i);
+      queue.post_bulk(&i, 0);
+      queue.post_bulk(std::ranges::views::iota(i).begin(), 0);
+      queue.post(i);
     }
     for (; i < 8; ++i) {
-      chan.post_bulk(std::ranges::views::iota(i).begin(), 0);
-      chan.post_bulk(std::ranges::views::iota(i).begin(), 0);
-      chan.post_bulk(std::ranges::views::iota(i).begin(), 1);
+      queue.post_bulk(std::ranges::views::iota(i).begin(), 0);
+      queue.post_bulk(std::ranges::views::iota(i).begin(), 0);
+      queue.post_bulk(std::ranges::views::iota(i).begin(), 1);
     }
     size_t count = 0;
     size_t sum = 0;
     for (size_t j = 0; j < i; ++j) {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_TRUE(static_cast<bool>(v));
       sum += *v;
       ++count;
@@ -203,13 +205,13 @@ TEST_F(CATEGORY, post_bulk_none) {
     EXPECT_EQ(28, sum);
     EXPECT_EQ(8, count);
 
-    auto v = chan.try_pull();
+    auto v = queue.try_pull();
     EXPECT_FALSE(static_cast<bool>(v));
     co_return;
   }());
 }
 
-struct chan_config_no_suspend : coro_util::qu_spsc_unbounded_default_config {
+struct queue_config_no_suspend : coro_util::qu_spsc_unbounded_default_config {
   static inline constexpr size_t BlockSize = 2;
   static inline constexpr bool ConsumerCanSuspend = false;
 };
@@ -220,24 +222,24 @@ TEST_F(CATEGORY, try_pull_no_suspend) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<size_t, chan_config_no_suspend>{};
+    auto queue = coro_util::qu_spsc_unbounded<size_t, queue_config_no_suspend>{};
 
     // Empty queue: try_pull yields an empty scope.
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_FALSE(static_cast<bool>(v));
     }
 
     // Post enough items to cross several blocks.
     static constexpr size_t NITEMS = 10;
     for (size_t i = 0; i < NITEMS; ++i) {
-      chan.post(i);
+      queue.post(i);
     }
 
     size_t sum = 0;
     size_t count = 0;
     for (size_t i = 0; i < NITEMS; ++i) {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_TRUE(static_cast<bool>(v));
       sum += *v;
       ++count;
@@ -251,7 +253,7 @@ TEST_F(CATEGORY, try_pull_no_suspend) {
 
     // Queue is drained: try_pull again yields an empty scope.
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_FALSE(static_cast<bool>(v));
     }
     co_return;
@@ -261,7 +263,7 @@ TEST_F(CATEGORY, try_pull_no_suspend) {
 // BlockSize == 1 is the minimum allowed block size. Every element lives in
 // its own block, so every consumed element is a block-start and triggers the
 // block reclaim path in finish_read.
-struct chan_config_block1 : coro_util::qu_spsc_unbounded_default_config {
+struct queue_config_block1 : coro_util::qu_spsc_unbounded_default_config {
   static inline constexpr size_t BlockSize = 1;
 };
 
@@ -271,16 +273,16 @@ TEST_F(CATEGORY, block_size_one) {
     tmc::ex_cpu ex1;
     ex1.set_thread_count(1).init();
     test_async_main(ex1, []() -> tmc::task<void> {
-      auto chan = coro_util::qu_spsc_unbounded<size_t, chan_config_block1>{};
+      auto queue = coro_util::qu_spsc_unbounded<size_t, queue_config_block1>{};
 
       static constexpr size_t NITEMS = 10;
       for (size_t i = 0; i < NITEMS; ++i) {
-        chan.post(i);
+        queue.post(i);
       }
       size_t sum = 0;
       size_t count = 0;
       for (size_t i = 0; i < NITEMS; ++i) {
-        auto v = chan.try_pull();
+        auto v = queue.try_pull();
         EXPECT_TRUE(static_cast<bool>(v));
         sum += *v;
         ++count;
@@ -292,7 +294,7 @@ TEST_F(CATEGORY, block_size_one) {
       }
       EXPECT_EQ(expectedSum, sum);
 
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_FALSE(static_cast<bool>(v));
       co_return;
     }());
@@ -305,29 +307,29 @@ TEST_F(CATEGORY, block_size_one) {
       size_t sum;
     };
 
-    auto chan = coro_util::qu_spsc_unbounded<size_t, chan_config_block1>{};
+    auto queue = coro_util::qu_spsc_unbounded<size_t, queue_config_block1>{};
 
     auto results = co_await tmc::spawn_tuple(
-      [](auto& Chan) -> tmc::task<size_t> {
+      [](auto& Queue) -> tmc::task<size_t> {
         size_t i = 0;
         for (; i < NITEMS; ++i) {
-          Chan.post(i);
+          Queue.post(i);
         }
-        Chan.post(SPSC_TEST_SENTINEL);
+        Queue.post(SPSC_TEST_SENTINEL);
         co_return i;
-      }(chan),
-      [](auto& Chan) -> tmc::task<result> {
+      }(queue),
+      [](auto& Queue) -> tmc::task<result> {
         size_t count = 0;
         size_t sum = 0;
         while (true) {
-          auto v = co_await Chan.pull();
+          auto v = co_await Queue.pull();
           if (*v == SPSC_TEST_SENTINEL) {
             co_return result{count, sum};
           }
           ++count;
           sum += *v;
         }
-      }(chan)
+      }(queue)
     );
     auto& prod = std::get<0>(results);
     auto& cons = std::get<1>(results);
@@ -360,42 +362,42 @@ TEST_F(CATEGORY, non_movable_type) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<non_movable, qu_config<true>>{};
+    auto queue = coro_util::qu_spsc_unbounded<non_movable, qu_config<true>>{};
 
     // try_pull on empty queue
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_FALSE(static_cast<bool>(v));
     }
 
     // Emplace-construct values directly in the queue storage.
-    chan.post(1, 2);
-    chan.post(3, 4);
-    chan.post(5, 6);
+    queue.post(1, 2);
+    queue.post(3, 4);
+    queue.post(5, 6);
 
     // First value via try_pull
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_TRUE(static_cast<bool>(v));
       EXPECT_EQ(3, v->value);
     }
 
     // Second value via co_await pull()
     {
-      auto v = co_await chan.pull();
+      auto v = co_await queue.pull();
       EXPECT_EQ(7, v->value);
     }
 
     // Third value via try_pull
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_TRUE(static_cast<bool>(v));
       EXPECT_EQ(11, v->value);
     }
 
     // Queue is drained
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_FALSE(static_cast<bool>(v));
     }
 
@@ -409,15 +411,15 @@ TEST_F(CATEGORY, try_pull_closed_empty) {
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
     using qerr = coro_util::qu_err;
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
-    EXPECT_TRUE(chan.empty());
-    chan.close();
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    EXPECT_TRUE(queue.empty());
+    queue.close();
 
     // A closed-and-drained queue is not considered empty; the consumer should
     // pull and observe the CLOSED status.
-    EXPECT_FALSE(chan.empty());
+    EXPECT_FALSE(queue.empty());
 
-    auto v = chan.try_pull();
+    auto v = queue.try_pull();
     EXPECT_EQ(qerr::CLOSED, v.status());
     EXPECT_FALSE(static_cast<bool>(v));
     co_return;
@@ -430,20 +432,20 @@ TEST_F(CATEGORY, empty) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
-    EXPECT_TRUE(chan.empty());
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    EXPECT_TRUE(queue.empty());
 
-    chan.post(1u);
-    EXPECT_FALSE(chan.empty());
+    queue.post(1u);
+    EXPECT_FALSE(queue.empty());
 
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_TRUE(static_cast<bool>(v));
     }
-    EXPECT_TRUE(chan.empty());
+    EXPECT_TRUE(queue.empty());
 
-    chan.close();
-    EXPECT_FALSE(chan.empty());
+    queue.close();
+    EXPECT_FALSE(queue.empty());
     co_return;
   }());
 }
@@ -452,21 +454,21 @@ TEST_F(CATEGORY, empty_when_drained) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
 
-    chan.post(7u);
-    EXPECT_FALSE(chan.empty());
+    queue.post(7u);
+    EXPECT_FALSE(queue.empty());
 
-    chan.close();
-    EXPECT_FALSE(chan.empty());
+    queue.close();
+    EXPECT_FALSE(queue.empty());
 
     {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_TRUE(static_cast<bool>(v));
       EXPECT_EQ(7u, *v);
     }
     // closed-and-drained == non-empty
-    EXPECT_FALSE(chan.empty());
+    EXPECT_FALSE(queue.empty());
     co_return;
   }());
 }
@@ -476,10 +478,10 @@ TEST_F(CATEGORY, close_idempotent) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
-    chan.close();
-    chan.close();
-    chan.close();
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    queue.close();
+    queue.close();
+    queue.close();
     co_return;
   }());
 }
@@ -490,14 +492,14 @@ TEST_F(CATEGORY, pull_after_close_returns_empty) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
-    chan.close();
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    queue.close();
 
-    auto v = co_await chan.pull();
+    auto v = co_await queue.pull();
     EXPECT_FALSE(static_cast<bool>(v));
 
     // A second pull() should also yield an empty scope.
-    auto v2 = co_await chan.pull();
+    auto v2 = co_await queue.pull();
     EXPECT_FALSE(static_cast<bool>(v2));
     co_return;
   }());
@@ -548,17 +550,17 @@ TEST_F(CATEGORY, close_wakes_suspended_consumer) {
   tmc::ex_cpu_st exec;
   exec.init();
   test_async_main(exec, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
 
-    auto consumer = tmc::spawn([](auto& Chan) -> tmc::task<bool> {
-                      auto v = co_await Chan.pull();
+    auto consumer = tmc::spawn([](auto& Queue) -> tmc::task<bool> {
+                      auto v = co_await Queue.pull();
                       co_return static_cast<bool>(v);
-                    }(chan))
+                    }(queue))
                       .fork();
 
     // Force the consumer to run first and suspend on the empty queue.
     co_await tmc::reschedule();
-    chan.close();
+    queue.close();
 
     bool got_value = co_await std::move(consumer);
     EXPECT_FALSE(got_value); // consumer was woken by close with empty scope
@@ -573,9 +575,9 @@ TEST_F(CATEGORY, post_bulk_wakes_suspended_consumer) {
   tmc::ex_cpu_st exec;
   exec.init();
   test_async_main(exec, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
 
-    auto consumer = tmc::spawn([](auto& Chan) -> tmc::task<size_t> {
+    auto consumer = tmc::spawn([](auto& Queue) -> tmc::task<size_t> {
                       // Consumer suspends at slot 0; post_bulk wakes it.
                       // Drain everything until the queue is closed (empty
                       // scope). Each pull_zc_scope must be released before
@@ -583,18 +585,18 @@ TEST_F(CATEGORY, post_bulk_wakes_suspended_consumer) {
                       // at most one scope from a given queue be live at a
                       // time.
                       size_t sum = 0;
-                      while (auto v = co_await Chan.pull()) {
+                      while (auto v = co_await Queue.pull()) {
                         sum += *v;
                       }
                       co_return sum;
-                    }(chan))
+                    }(queue))
                       .fork();
 
     // Force the consumer to run first and suspend on the empty queue.
     co_await tmc::reschedule();
     size_t items[5] = {10, 20, 30, 40, 50};
-    chan.post_bulk(&items[0], 5);
-    chan.close();
+    queue.post_bulk(&items[0], 5);
+    queue.close();
 
     auto sum = co_await std::move(consumer);
     EXPECT_EQ(10u + 20u + 30u + 40u + 50u, sum);
@@ -607,19 +609,19 @@ TEST_F(CATEGORY, post_bulk_wakes_suspended_consumer) {
 TEST_F(CATEGORY, close_resume_inline_no_waiting_consumer) {
   test_async_main(ex(), []() -> tmc::task<void> {
     using qerr = coro_util::qu_err;
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
 
     for (size_t i = 0; i < 5; ++i) {
-      chan.post(i);
+      queue.post(i);
     }
 
-    chan.close_resume_inline();
+    queue.close_resume_inline();
 
     // Drain the queue.
     size_t sum = 0;
     size_t count = 0;
     while (true) {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       if (v.status() == qerr::OK) {
         sum += *v;
         ++count;
@@ -634,13 +636,13 @@ TEST_F(CATEGORY, close_resume_inline_no_waiting_consumer) {
     EXPECT_EQ(0u + 1u + 2u + 3u + 4u, sum);
 
     // Further try_pull stays CLOSED.
-    auto v = chan.try_pull();
+    auto v = queue.try_pull();
     EXPECT_EQ(qerr::CLOSED, v.status());
     EXPECT_FALSE(static_cast<bool>(v));
 
     // close_resume_inline() is idempotent.
-    chan.close_resume_inline();
-    chan.close();
+    queue.close_resume_inline();
+    queue.close();
     co_return;
   }());
 }
@@ -653,17 +655,17 @@ TEST_F(CATEGORY, close_resume_inline_wakes_suspended_consumer) {
   tmc::ex_cpu_st exec;
   exec.init();
   test_async_main(exec, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
 
-    auto consumer = tmc::spawn([](auto& Chan) -> tmc::task<bool> {
-                      auto v = co_await Chan.pull();
+    auto consumer = tmc::spawn([](auto& Queue) -> tmc::task<bool> {
+                      auto v = co_await Queue.pull();
                       co_return static_cast<bool>(v);
-                    }(chan))
+                    }(queue))
                       .fork();
 
     // Force the consumer to run first and suspend on the empty queue.
     co_await tmc::reschedule();
-    chan.close_resume_inline();
+    queue.close_resume_inline();
 
     bool got_value = co_await std::move(consumer);
     EXPECT_FALSE(got_value); // consumer was woken by close_resume_inline with empty scope
@@ -677,15 +679,15 @@ TEST_F(CATEGORY, post_bulk_iterator_pair) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
 
     std::vector<size_t> items{1, 2, 3, 4, 5, 6, 7};
-    chan.post_bulk(items.begin(), items.end());
+    queue.post_bulk(items.begin(), items.end());
 
     size_t sum = 0;
     size_t count = 0;
     for (size_t i = 0; i < items.size(); ++i) {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_TRUE(static_cast<bool>(v));
       sum += *v;
       ++count;
@@ -694,7 +696,7 @@ TEST_F(CATEGORY, post_bulk_iterator_pair) {
     EXPECT_EQ(1u + 2u + 3u + 4u + 5u + 6u + 7u, sum);
 
     // Queue is drained.
-    auto empty = chan.try_pull();
+    auto empty = queue.try_pull();
     EXPECT_FALSE(static_cast<bool>(empty));
     co_return;
   }());
@@ -705,18 +707,18 @@ TEST_F(CATEGORY, post_bulk_iterator_pair_empty) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
 
     std::vector<size_t> empty_items;
-    chan.post_bulk(empty_items.begin(), empty_items.end());
+    queue.post_bulk(empty_items.begin(), empty_items.end());
 
     // Queue should still be empty.
-    auto v = chan.try_pull();
+    auto v = queue.try_pull();
     EXPECT_FALSE(static_cast<bool>(v));
 
     // A real post afterwards should still work and arrive at slot 0.
-    chan.post(42u);
-    auto v2 = chan.try_pull();
+    queue.post(42u);
+    auto v2 = queue.try_pull();
     EXPECT_TRUE(static_cast<bool>(v2));
     EXPECT_EQ(42u, *v2);
     co_return;
@@ -729,15 +731,15 @@ TEST_F(CATEGORY, post_bulk_range) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
 
     std::vector<size_t> items{10, 20, 30, 40, 50};
-    chan.post_bulk(items);
+    queue.post_bulk(items);
 
     size_t sum = 0;
     size_t count = 0;
     for (size_t i = 0; i < items.size(); ++i) {
-      auto v = chan.try_pull();
+      auto v = queue.try_pull();
       EXPECT_TRUE(static_cast<bool>(v));
       sum += *v;
       ++count;
@@ -746,7 +748,7 @@ TEST_F(CATEGORY, post_bulk_range) {
     EXPECT_EQ(10u + 20u + 30u + 40u + 50u, sum);
 
     // Queue is drained.
-    auto empty = chan.try_pull();
+    auto empty = queue.try_pull();
     EXPECT_FALSE(static_cast<bool>(empty));
     co_return;
   }());
@@ -757,22 +759,24 @@ TEST_F(CATEGORY, post_bulk_range_empty) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
-    auto chan = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
+    auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
 
     std::vector<size_t> empty_items;
-    chan.post_bulk(empty_items);
+    queue.post_bulk(empty_items);
 
     // Queue should still be empty.
-    auto v = chan.try_pull();
+    auto v = queue.try_pull();
     EXPECT_FALSE(static_cast<bool>(v));
 
     // A real post afterwards should still work and arrive at slot 0.
-    chan.post(99u);
-    auto v2 = chan.try_pull();
+    queue.post(99u);
+    auto v2 = queue.try_pull();
     EXPECT_TRUE(static_cast<bool>(v2));
     EXPECT_EQ(99u, *v2);
     co_return;
   }());
 }
+
+} // namespace
 
 #undef CATEGORY

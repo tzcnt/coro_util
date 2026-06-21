@@ -63,23 +63,6 @@ struct chan_default_config {
   static inline constexpr bool ElementPadding = true;
 };
 
-struct channel_inline_continuation_policy {
-  struct state {};
-
-  template <typename Promise>
-  static state capture(std::coroutine_handle<Promise>) noexcept {
-    return {};
-  }
-
-  static void resume(state&, std::coroutine_handle<> Continuation) noexcept {
-    Continuation.resume();
-  }
-
-  static void resume_inline(state&, std::coroutine_handle<> Continuation) noexcept {
-    Continuation.resume();
-  }
-};
-
 /// Tokens share ownership of a channel by reference counting.
 /// Access to the channel (from multiple tokens) is thread-safe,
 /// but access to a single token from multiple threads is not.
