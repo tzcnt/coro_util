@@ -16,6 +16,8 @@
 
 namespace coro_util {
 namespace detail {
+
+// Captures and restores the current task's executor and priority.
 struct tmc_continuation_policy {
   struct state {
     tmc::ex_any* executor;

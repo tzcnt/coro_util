@@ -1,6 +1,58 @@
 # coro_util
 
-## Supported Libraries
+Header-only async data structures for C++20 coroutines.
+
+These data structures have been white-labeled from the [TooManyCooks](https://github.com/tzcnt/TooManyCooks) framework and made adaptable for use with any C++20 coroutine library.
+
+This repo does not provide a task or executor type. Instead, you configure the data structures with a small policy adapter that allows them to integrate with your library of choice. Pre-built adapters are provided for several well-known coroutine libraries.
+
+## Queues
+
+All queues are linearizable, lock-free, and wait-free on the fast path (unbounded / not-full bounded). Instead of spinning or blocking, participants suspend when data is not available.
+
+All queues are zero-copy: elements are emplaced directly in the queue storage and are accessed on the consumer side via a scoped reference. You can choose to copy the data out of this reference, or use it in-place. This means that you can use these queues with types that have no default, copy, or move constructor.
+
+All queues can be `close()` d, which immediately stops new producers, and also signals to consumers when the queue has been fully drained.
+
+| Name | Purpose |
+|---|---|
+| `qu_spsc_bounded` | SPSC bounded queue |
+| `qu_spsc_unbounded` | SPSC unbounded queue |
+| `qu_mpsc_bounded` | MPSC bounded queue |
+| `qu_mpsc_unbounded` | MPSC unbounded queue |
+| `channel` | MPMC queue. accessed via `chan_tok` hazard pointer + shared ownership handle |
+
+## Usage
+
+Add `include/` to your include path, then include the queue header from the
+adapter folder for your coroutine library. Each adapter binds the queues to that
+library's continuation policy, implementing executor affinity for those libraries that support it.
+
+```cpp
+// Pick the adapter folder that matches your library (here: TooManyCooks).
+#include "coro_util/adapter/tmc/qu_spsc_bounded.hpp"
+
+tmc::task<void> example() {
+  // A single-producer/single-consumer bounded queue holding 16 size_t slots.
+  coro_util::qu_spsc_bounded<size_t> queue{16};
+
+  // Producer side. push() for bounded queues suspends until a slot is free.
+  // post() for unbounded queues does not suspend.
+  co_await queue.push(42);
+
+  // Consumer side. pull() suspends until an element is available and returns a
+  // zero-copy handle to the slot. The handle is empty (operator bool == false)
+  // only once the queue is closed and drained;.
+  while(auto value = co_await queue.pull()) {
+    process(*value);
+  }
+}
+```
+
+Swapping libraries is just swapping the include directory: use
+`coro_util/adapter/yaclib/...`, `coro_util/adapter/asio/...`, etc.
+
+## Provided Library Adapters
 
 | Library | Adapter | Executor Affinity | Priority Affinity |
 |---|---|---|---|
