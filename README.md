@@ -56,14 +56,14 @@ Swapping libraries is just swapping the include directory: use
 
 | Library | Adapter | Executor Affinity | Priority Affinity |
 |---|---|---|---|
-| TooManyCooks | [link](include/coro_util/adapter/tmc) | ✅ | ✅ |
-| YACLib | [link](include/coro_util/adapter/yaclib) | ✅ | ❌ |
-| Boost.Cobalt | [link](include/coro_util/adapter/cobalt) | ✅ | ❌ |
-| Asio / Boost.Asio | [link](include/coro_util/adapter/asio) | ✅¹ ² | ❌ |
-| libfork | [link](include/coro_util/adapter/libfork) | ✅² | ❌ |
-| concurrencpp | [link](include/coro_util/adapter/concurrencpp) | ❌ | ❌ |
-| cppcoro | [link](include/coro_util/adapter/cppcoro) | ❌ | ❌ |
-| libcoro | [link](include/coro_util/adapter/libcoro) | ❌ | ❌ |
+| [TooManyCooks](https://github.com/tzcnt/TooManyCooks) | [link](include/coro_util/adapter/tmc) | ✅ | ✅ |
+| [YACLib](https://github.com/YACLib/YACLib) | [link](include/coro_util/adapter/yaclib) | ✅ | ❌ |
+| [Boost.Cobalt](https://github.com/boostorg/cobalt) | [link](include/coro_util/adapter/cobalt) | ✅ | ❌ |
+| [Asio / Boost.Asio](https://github.com/chriskohlhoff/asio) | [link](include/coro_util/adapter/asio) | ✅¹ ² | ❌ |
+| [libfork](https://github.com/ConorWilliams/libfork) | [link](include/coro_util/adapter/libfork) | ✅² | ❌ |
+| [concurrencpp](https://github.com/David-Haim/concurrencpp) | [link](include/coro_util/adapter/concurrencpp) | ❌ | ❌ |
+| [cppcoro](https://github.com/andreasbuhr/cppcoro) | [link](include/coro_util/adapter/cppcoro) | ❌ | ❌ |
+| [libcoro](https://github.com/jbaldwin/libcoro) | [link](include/coro_util/adapter/libcoro) | ❌ | ❌ |
 
 ¹ Works with both standalone Asio (include `adapter/asio/op.hpp`, `asio::`) and
 Boost.Asio (include `adapter/asio/boost_op.hpp`, `boost::asio::`), and covers
