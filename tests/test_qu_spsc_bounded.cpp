@@ -1083,30 +1083,84 @@ TEST_F(CATEGORY, try_push_full_does_not_construct) {
   }());
 }
 
-// Exercise value() on both the try_pull and pull scopes. The other tests reach
-// the held value only via operator* (has_value() is already covered, but only
-// for the empty/false case).
+// Exercise value(), the default constructor, and the move constructor on both
+// the try_pull and pull scopes. The other tests reach the held value only via
+// operator* and never default-construct or explicitly move the scopes.
 TEST_F(CATEGORY, scope_value_accessor) {
   tmc::ex_cpu ex;
   ex.set_thread_count(1).init();
   test_async_main(ex, []() -> tmc::task<void> {
     auto queue = coro_util::qu_spsc_bounded<size_t, qu_config<true>>{TEST_CAPACITY};
 
-    // try_pull scope: value()
+    // try_pull scope: default ctor (empty), value(), move ctor.
+    {
+      decltype(queue.try_pull()) empty{};
+      EXPECT_FALSE(empty.has_value());
+    }
     co_await queue.push(static_cast<size_t>(11));
     {
       auto v = queue.try_pull();
       EXPECT_TRUE(v.has_value());
       EXPECT_EQ(11u, v.value());
+      auto moved = std::move(v);
+      EXPECT_FALSE(v.has_value());
+      EXPECT_EQ(11u, moved.value());
     }
 
-    // pull scope: value()
+    // pull scope: value(), move ctor.
     co_await queue.push(static_cast<size_t>(22));
     {
       auto v = co_await queue.pull();
       EXPECT_TRUE(v.has_value());
       EXPECT_EQ(22u, v.value());
+      auto moved = std::move(v);
+      EXPECT_FALSE(v.has_value());
+      EXPECT_EQ(22u, moved.value());
     }
+    co_return;
+  }());
+}
+
+// Exhaustively exercise pull_zc_scope::operator=(&&): over-nonempty,
+// move-into-empty, and self-move. (try_pull_zc_scope::operator= is already
+// exercised by the drain loops elsewhere.)
+TEST_F(CATEGORY, pull_zc_scope_move_assign_branches) {
+  tmc::ex_cpu ex;
+  ex.set_thread_count(1).init();
+  test_async_main(ex, []() -> tmc::task<void> {
+    std::atomic<size_t> count1{0};
+    std::atomic<size_t> count2{0};
+    std::atomic<size_t> count3{0};
+    {
+      auto q1 = coro_util::qu_spsc_bounded<spsc_destructor_counter, qu_config<true>>{TEST_CAPACITY};
+      auto q2 = coro_util::qu_spsc_bounded<spsc_destructor_counter, qu_config<true>>{TEST_CAPACITY};
+      auto q3 = coro_util::qu_spsc_bounded<spsc_destructor_counter, qu_config<true>>{TEST_CAPACITY};
+      co_await q1.push(spsc_destructor_counter{&count1});
+      co_await q2.push(spsc_destructor_counter{&count2});
+      co_await q3.push(spsc_destructor_counter{&count3});
+
+      auto a = co_await q1.pull();
+      EXPECT_TRUE(a.has_value());
+
+      a = co_await q2.pull(); // over-nonempty
+      EXPECT_EQ(1u, count1.load());
+      EXPECT_EQ(0u, count2.load());
+
+      auto b = std::move(a);
+      EXPECT_FALSE(a.has_value());
+      a = co_await q3.pull(); // into-empty
+      EXPECT_TRUE(a.has_value());
+      EXPECT_EQ(0u, count2.load());
+      EXPECT_EQ(0u, count3.load());
+
+      auto& aref = a;
+      a = std::move(aref); // self-move
+      EXPECT_TRUE(a.has_value());
+      EXPECT_EQ(0u, count3.load());
+    }
+    EXPECT_EQ(1u, count1.load());
+    EXPECT_EQ(1u, count2.load());
+    EXPECT_EQ(1u, count3.load());
     co_return;
   }());
 }

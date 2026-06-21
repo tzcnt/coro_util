@@ -950,6 +950,12 @@ TEST_F(CATEGORY, try_pull_scope_accessors) {
     // Use size_t (already exercised elsewhere) to avoid instantiating a fresh
     // channel<T> whose reclaim paths this small test would leave uncovered.
     auto chan = coro_util::make_channel<size_t, chan_config<true>>();
+
+    // Default constructor: an empty scope.
+    decltype(chan.try_pull()) empty{};
+    EXPECT_FALSE(static_cast<bool>(empty));
+    EXPECT_FALSE(empty.has_value());
+
     chan.post(7u);
 
     auto v = chan.try_pull();
@@ -957,6 +963,103 @@ TEST_F(CATEGORY, try_pull_scope_accessors) {
     EXPECT_TRUE(v.has_value());           // has_value()
     EXPECT_EQ(*v, 7u);                    // operator*
     EXPECT_EQ(*v.operator->(), 7u);       // operator-> (size_t has no members)
+
+    // Move constructor.
+    auto moved = std::move(v);
+    EXPECT_FALSE(v.has_value());
+    EXPECT_TRUE(moved.has_value());
+    EXPECT_EQ(moved.value(), 7u);
+    co_return;
+  }());
+}
+
+// Exhaustively exercise chan_try_pull_zc_scope::operator=(&&): over-nonempty,
+// move-into-empty, and self-move. Separate channels are used because a try_pull
+// scope shares its token's single hazard pointer, so at most one scope per
+// channel may be live at a time.
+TEST_F(CATEGORY, chan_try_pull_zc_scope_move_assign_branches) {
+  test_async_main(ex(), []() -> tmc::task<void> {
+    std::atomic<size_t> count1{0};
+    std::atomic<size_t> count2{0};
+    std::atomic<size_t> count3{0};
+    {
+      auto c1 = coro_util::make_channel<destructor_counter, chan_config<true>>();
+      auto c2 = coro_util::make_channel<destructor_counter, chan_config<true>>();
+      auto c3 = coro_util::make_channel<destructor_counter, chan_config<true>>();
+      c1.post(destructor_counter{&count1});
+      c2.post(destructor_counter{&count2});
+      c3.post(destructor_counter{&count3});
+
+      auto a = c1.try_pull();
+      EXPECT_TRUE(a.has_value());
+
+      // Over-nonempty: a holds c1; assigning c2 destroys c1's element first.
+      a = c2.try_pull();
+      EXPECT_EQ(1u, count1.load());
+      EXPECT_EQ(0u, count2.load());
+
+      // Move-into-empty: b adopts c2 from a (a empty); assigning c3 into the
+      // empty a skips the release path.
+      auto b = std::move(a);
+      EXPECT_FALSE(a.has_value());
+      a = c3.try_pull();
+      EXPECT_TRUE(a.has_value());
+      EXPECT_EQ(0u, count2.load()); // c2 still alive in b
+      EXPECT_EQ(0u, count3.load());
+
+      // Self-move: the `this != &Other` guard takes its false arm; value kept.
+      auto& aref = a;
+      a = std::move(aref);
+      EXPECT_TRUE(a.has_value());
+      EXPECT_EQ(0u, count3.load());
+    } // ~b releases c2's element, ~a releases c3's element.
+    EXPECT_EQ(1u, count1.load());
+    EXPECT_EQ(1u, count2.load());
+    EXPECT_EQ(1u, count3.load());
+    co_return;
+  }());
+}
+
+// Exhaustively exercise chan_zc_scope::operator=(&&) (returned by co_await
+// pull()): over-nonempty, move-into-empty, and self-move.
+TEST_F(CATEGORY, chan_zc_scope_move_assign_branches) {
+  test_async_main(ex(), []() -> tmc::task<void> {
+    std::atomic<size_t> count1{0};
+    std::atomic<size_t> count2{0};
+    std::atomic<size_t> count3{0};
+    {
+      auto c1 = coro_util::make_channel<destructor_counter, chan_config<true>>();
+      auto c2 = coro_util::make_channel<destructor_counter, chan_config<true>>();
+      auto c3 = coro_util::make_channel<destructor_counter, chan_config<true>>();
+      c1.post(destructor_counter{&count1});
+      c2.post(destructor_counter{&count2});
+      c3.post(destructor_counter{&count3});
+
+      auto a = co_await c1.pull();
+      EXPECT_TRUE(a.has_value());
+
+      // Over-nonempty.
+      a = co_await c2.pull();
+      EXPECT_EQ(1u, count1.load());
+      EXPECT_EQ(0u, count2.load());
+
+      // Move-into-empty.
+      auto b = std::move(a);
+      EXPECT_FALSE(a.has_value());
+      a = co_await c3.pull();
+      EXPECT_TRUE(a.has_value());
+      EXPECT_EQ(0u, count2.load());
+      EXPECT_EQ(0u, count3.load());
+
+      // Self-move.
+      auto& aref = a;
+      a = std::move(aref);
+      EXPECT_TRUE(a.has_value());
+      EXPECT_EQ(0u, count3.load());
+    }
+    EXPECT_EQ(1u, count1.load());
+    EXPECT_EQ(1u, count2.load());
+    EXPECT_EQ(1u, count3.load());
     co_return;
   }());
 }

@@ -785,6 +785,12 @@ TEST_F(CATEGORY, scope_accessors) {
   test_async_main(ex, []() -> tmc::task<void> {
     auto queue = coro_util::qu_spsc_unbounded<size_t, qu_config<true>>{};
 
+    // try_pull scope: default ctor (empty)
+    {
+      decltype(queue.try_pull()) empty{};
+      EXPECT_FALSE(empty.has_value());
+    }
+
     // try_pull scope: has_value() + value()
     queue.post(static_cast<size_t>(11));
     {
