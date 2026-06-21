@@ -942,6 +942,58 @@ TEST_F(CATEGORY, close_empty_channel_external_thread) {
   chan.close();
 }
 
+// Exercise the chan_try_pull_zc_scope accessors that the existing try_pull
+// tests never touch: operator bool, has_value(), operator*, and operator->.
+// (Those tests only call status() and value() on a try_pull result.)
+TEST_F(CATEGORY, try_pull_scope_accessors) {
+  test_async_main(ex(), []() -> tmc::task<void> {
+    // Use size_t (already exercised elsewhere) to avoid instantiating a fresh
+    // channel<T> whose reclaim paths this small test would leave uncovered.
+    auto chan = coro_util::make_channel<size_t, chan_config<true>>();
+    chan.post(7u);
+
+    auto v = chan.try_pull();
+    EXPECT_TRUE(static_cast<bool>(v));    // operator bool
+    EXPECT_TRUE(v.has_value());           // has_value()
+    EXPECT_EQ(*v, 7u);                    // operator*
+    EXPECT_EQ(*v.operator->(), 7u);       // operator-> (size_t has no members)
+    co_return;
+  }());
+}
+
+// try_pull() must report CLOSED (not EMPTY) once read_offset has drained up to
+// write_offset on a closed channel. This hits the "appears empty by index AND
+// closed" branch in try_pull. The existing try_pull_closed_after_failed_post
+// test reaches CLOSED via the other branch (failed posts after close leave
+// write_offset ahead of read_offset, so the queue still appears non-empty).
+TEST_F(CATEGORY, try_pull_closed_after_drain) {
+  tmc::ex_cpu ex;
+  ex.set_thread_count(1).init();
+  test_async_main(ex, []() -> tmc::task<void> {
+    auto chan = coro_util::make_channel<size_t, chan_config<true>>();
+    EXPECT_TRUE(chan.post(1u));
+    chan.close();
+
+    // Drain the one real item, then pull past the close sentinel so that
+    // read_offset catches up to write_offset.
+    {
+      auto v = co_await chan.pull();
+      EXPECT_TRUE(v.has_value());
+      EXPECT_EQ(v.value(), 1u);
+    }
+    {
+      auto v2 = co_await chan.pull();
+      EXPECT_FALSE(v2.has_value());
+    }
+
+    // read_offset == write_offset and the channel is closed: try_pull takes the
+    // empty-by-index closed branch and returns CLOSED rather than EMPTY.
+    auto t = chan.try_pull();
+    EXPECT_EQ(t.status(), coro_util::qu_err::CLOSED);
+    co_return;
+  }());
+}
+
 } // namespace
 
 #undef CATEGORY
