@@ -39,7 +39,7 @@ struct qu_mpsc_unbounded_default_config {
 
   /// The number of elements that can be stored in each block in the
   /// qu_mpsc_unbounded_impl linked list.
-  static inline constexpr size_t BlockSize = 4096;
+  static inline constexpr size_t BlockSize = 256;
 
   /// If true, queue elements will be padded up to the next increment of 64
   /// bytes. This reduces false sharing between neighboring elements.
