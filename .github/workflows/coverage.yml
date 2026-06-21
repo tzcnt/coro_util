@@ -1,0 +1,36 @@
+name: coverage
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: configure
+      run: cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DTMC_USE_HWLOC=OFF -DCMAKE_CXX_FLAGS='-Werror -fprofile-instr-generate -fcoverage-mapping' -DCMAKE_EXE_LINKER_FLAGS='-Wl,--build-id -fprofile-instr-generate -fcoverage-mapping' -B build/coverage .
+    - name: build
+      run: cmake --build build/coverage --parallel $(nproc) --target tests
+    - name: run tests
+      run: LLVM_PROFILE_FILE=tests.profraw ./build/coverage/tests/tests
+    - name: merge
+      run: llvm-profdata-18 merge -o coverage.profdata tests.profraw
+    # coro_util is header-only, so coverage is scoped to its public headers
+    # (the adapter/ subdirectory is excluded, matching coverage.sh).
+    - name: export
+      run: >
+        llvm-cov-18 export -format=lcov -instr-profile coverage.profdata
+        -object ./build/coverage/tests/tests
+        -sources ./include/coro_util/*.hpp
+        > coverage.lcov
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{secrets.CODECOV_TOKEN}}
+        slug: tzcnt/coro_util
+        files: coverage.lcov
