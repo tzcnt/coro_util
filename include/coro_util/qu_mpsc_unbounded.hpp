@@ -145,11 +145,6 @@ class qu_mpsc_unbounded_impl {
       return DATA_BIT == reinterpret_cast<uintptr_t>(f);
     }
 
-    bool is_closed_sentinel() noexcept {
-      void* f = flags.load(std::memory_order_acquire);
-      return CLOSED_BIT == reinterpret_cast<uintptr_t>(f);
-    }
-
     // Returns the raw flags value: DATA_BIT, CLOSED_BIT, or 0 (meaning empty).
     uintptr_t poll() noexcept {
       return reinterpret_cast<uintptr_t>(flags.load(std::memory_order_acquire));
