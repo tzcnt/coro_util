@@ -18,7 +18,7 @@ jobs:
       run: sudo apt-get update && sudo apt install gcc-14-multilib g++-14-multilib
     - uses: actions/checkout@v4
     - name: configure
-      run: cmake -G Ninja -DCMAKE_BUILD_TYPE=${{matrix.BUILD_TYPE}} -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DTMC_USE_HWLOC=OFF -DCMAKE_CXX_FLAGS='-Werror -m32' -DCMAKE_EXE_LINKER_FLAGS='-m32' -B build/${{matrix.BUILD_TYPE}} .
+      run: cmake -G Ninja -DCMAKE_BUILD_TYPE=${{matrix.BUILD_TYPE}} -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DTMC_USE_HWLOC=OFF -DCMAKE_C_FLAGS='-m32' -DCMAKE_CXX_FLAGS='-Werror -m32' -DCMAKE_EXE_LINKER_FLAGS='-m32' -B build/${{matrix.BUILD_TYPE}} .
     - name: build
       run: cmake --build build/${{matrix.BUILD_TYPE}} --parallel $(nproc) --target tests
     - name: run tests

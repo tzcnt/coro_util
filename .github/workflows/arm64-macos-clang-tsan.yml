@@ -16,7 +16,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: configure
-      run: cmake -G Ninja -DCMAKE_BUILD_TYPE=${{matrix.BUILD_TYPE}} -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DTMC_USE_HWLOC=OFF -DCMAKE_CXX_FLAGS='-Werror -fsanitize=thread' -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=thread' -B build/${{matrix.BUILD_TYPE}} .
+      run: cmake -G Ninja -DCMAKE_BUILD_TYPE=${{matrix.BUILD_TYPE}} -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DTMC_USE_HWLOC=OFF -DCMAKE_CXX_FLAGS='-Werror -fexperimental-library -fsanitize=thread' -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=thread' -B build/${{matrix.BUILD_TYPE}} .
     - name: build
       run: cmake --build build/${{matrix.BUILD_TYPE}} --parallel $(sysctl -n hw.logicalcpu) --target tests
     - name: run tests
