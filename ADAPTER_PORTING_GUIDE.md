@@ -23,8 +23,12 @@ The queues in `include/coro_util/*.hpp` are runtime-agnostic. They never name a
 specific executor type. Instead each is a template:
 
 ```cpp
-template <typename ContinuationPolicy, typename T, typename Config>
-class qu_spsc_bounded { ... };
+namespace coro_util {
+  namespace impl {
+    template <typename ContinuationPolicy, typename T, typename Config>
+    class qu_spsc_bounded { ... };
+  }
+}
 ```
 
 When a consumer/producer coroutine has to wait (queue empty / full), the queue:
