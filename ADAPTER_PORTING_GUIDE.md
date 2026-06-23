@@ -5,15 +5,15 @@ library by writing a **continuation policy** and a set of thin alias headers,
 then proving it works (especially executor affinity).
 
 This guide generalizes the process used to build the TMC and YACLib adapters
-(`include/coro_util/adapter/tmc`, `include/coro_util/adapter/yaclib`). Read the
+(`include/coro_util/tmc`, `include/coro_util/yaclib`). Read the
 YACLib adapter alongside this document — it is the smaller, cleaner reference.
 
 There are two routes. The **policy route** (§§1–6) is the default and covers most
 libraries. Some libraries' coroutines refuse a foreign awaitable outright — their
 promise has a *closed* `await_transform` — and then no policy will even compile;
 those take the **call-site wrapper route** (§7), for which Asio
-(`include/coro_util/adapter/asio`) and libfork
-(`include/coro_util/adapter/libfork`) are the references.
+(`include/coro_util/asio`) and libfork
+(`include/coro_util/libfork`) are the references.
 
 ---
 
@@ -40,7 +40,7 @@ An *adapter* supplies that policy for one specific library, plus a folder of
 and gets the queue pre-bound to the right policy.
 
 There is also a generic, ready-to-use policy at
-`include/coro_util/adapter/inline/policy.hpp` (resumes everything inline, no
+`include/coro_util/inline/policy.hpp` (resumes everything inline, no
 affinity) — both the minimal example of the contract and a real policy you can
 bind to directly.
 
@@ -52,7 +52,7 @@ bind to directly.
 > policy already provides. In that case skip sections 3 and the standalone
 > compile check; your alias headers just `#include "../inline/policy.hpp"` and
 > bind `coro_util::detail::inline_continuation_policy`. The concurrencpp adapter
-> (`include/coro_util/adapter/concurrencpp`) is the reference for this path:
+> (`include/coro_util/concurrencpp`) is the reference for this path:
 > concurrencpp stores no capturable affinity and has no public
 > `get_current_executor()`, so every one of its alias headers binds the generic
 > inline policy. Once such a library *does* gain a way to observe the current
@@ -165,7 +165,7 @@ Practical tactics that worked:
 > Skip this entire section if step 2 concluded the library has no capturable
 > affinity — bind `inline/policy.hpp` instead (see the §0 callout) and jump to §4.
 
-`include/coro_util/adapter/<lib>/policy.hpp`. Use the YACLib one as the template.
+`include/coro_util/<lib>/policy.hpp`. Use the YACLib one as the template.
 
 ```cpp
 #pragma once
@@ -222,11 +222,11 @@ library lacks affinity in the header (that belongs in the investigation notes,
 not five copies of a comment). There are five:
 
 ```
-include/coro_util/adapter/<lib>/qu_spsc_bounded.hpp
-include/coro_util/adapter/<lib>/qu_spsc_unbounded.hpp
-include/coro_util/adapter/<lib>/qu_mpsc_bounded.hpp
-include/coro_util/adapter/<lib>/qu_mpsc_unbounded.hpp
-include/coro_util/adapter/<lib>/channel.hpp
+include/coro_util/<lib>/qu_spsc_bounded.hpp
+include/coro_util/<lib>/qu_spsc_unbounded.hpp
+include/coro_util/<lib>/qu_mpsc_bounded.hpp
+include/coro_util/<lib>/qu_mpsc_unbounded.hpp
+include/coro_util/<lib>/channel.hpp
 ```
 
 Each looks like:
@@ -234,7 +234,7 @@ Each looks like:
 ```cpp
 #pragma once
 #include "policy.hpp"
-#include "../../qu_spsc_bounded.hpp"   // the base impl (relative include)
+#include "../qu_spsc_bounded.hpp"   // the base impl (relative include)
 
 namespace coro_util {
 template <typename T, typename Config = coro_util::qu_spsc_bounded_default_config>
@@ -260,7 +260,7 @@ on. A fast standalone check (no full project build) — drive `capture`/`resume`
 through a real coroutine of the target library so the templates instantiate:
 
 ```cpp
-#include "coro_util/adapter/<lib>/policy.hpp"
+#include "coro_util/<lib>/policy.hpp"
 #include "<lib>/.../task_or_future.h"
 struct probe {
   bool await_ready() const noexcept { return false; }
@@ -299,7 +299,7 @@ CMake essentials:
   (YACLib: `set(YACLIB_FLAGS CORO)` + `set(YACLIB_CXX_STANDARD 20)` to compile
   its coroutine sources).
 - `target_include_directories(... ../include/coro_util)` so the
-  `adapter/<lib>/...` include style resolves.
+  `<lib>/...` include style resolves.
 - `gtest_discover_tests`.
 
 Don't test the queue internals exhaustively — that's covered by the main TMC
@@ -358,8 +358,8 @@ tag types) with no generic passthrough. Inside such a coroutine `co_await
 q.pull()` is rejected ("no matching `await_transform`"), and **no continuation
 policy can fix it**: a policy governs how a waiter is captured and resumed, not
 what the host coroutine's `await_transform` accepts. References:
-`include/coro_util/adapter/asio/op.hpp` and
-`include/coro_util/adapter/libfork/op.hpp`.
+`include/coro_util/asio/op.hpp` and
+`include/coro_util/libfork/op.hpp`.
 
 **Detect it** with the §4 standalone probe, but write the probe coroutine as the
 *target library's own* coroutine type and bind the inline policy. If `co_await

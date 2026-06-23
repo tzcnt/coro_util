@@ -21,7 +21,7 @@ jobs:
     - name: merge
       run: llvm-profdata-18 merge -o coverage.profdata tests.profraw
     # coro_util is header-only, so coverage is scoped to its public headers
-    # (the adapter/ subdirectory is excluded, matching coverage.sh).
+    # (the  subdirectory is excluded, matching coverage.sh).
     - name: export
       run: >
         llvm-cov-18 export -format=lcov -instr-profile coverage.profdata

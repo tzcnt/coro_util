@@ -1,4 +1,4 @@
-#include "coro_util/adapter/tmc/qu_mpsc_unbounded.hpp"
+#include "coro_util/tmc/qu_mpsc_unbounded.hpp"
 #include "test_common.hpp"
 
 #include "tmc/ex_cpu_st.hpp"

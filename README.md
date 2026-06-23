@@ -34,7 +34,7 @@ library's continuation policy, implementing executor affinity for those librarie
 
 ```cpp
 // Pick the adapter folder that matches your library (here: TooManyCooks).
-#include "coro_util/adapter/tmc/qu_spsc_bounded.hpp"
+#include "coro_util/tmc/qu_spsc_bounded.hpp"
 
 tmc::task<void> example() {
   // A single-producer/single-consumer bounded queue holding 16 size_t slots.
@@ -54,24 +54,24 @@ tmc::task<void> example() {
 ```
 
 Swapping libraries is just swapping the include directory: use
-`coro_util/adapter/yaclib/...`, `coro_util/adapter/asio/...`, etc.
+`coro_util/yaclib/...`, `coro_util/asio/...`, etc.
 
 ## Provided Library Adapters
 
 | Library | Adapter | Executor Affinity | Priority Affinity |
 |---|---|---|---|
-| [TooManyCooks](https://github.com/tzcnt/TooManyCooks) | [link](include/coro_util/adapter/tmc) | ✅ | ✅ |
-| [YACLib](https://github.com/YACLib/YACLib) | [link](include/coro_util/adapter/yaclib) | ✅ | ❌ |
-| [Boost.Cobalt](https://github.com/boostorg/cobalt) | [link](include/coro_util/adapter/cobalt) | ✅ | ❌ |
-| [Asio / Boost.Asio](https://github.com/chriskohlhoff/asio) | [link](include/coro_util/adapter/asio) | ✅¹ ² | ❌ |
-| [Boost.Capy](https://github.com/cppalliance/capy) | [link](include/coro_util/adapter/capy) | ✅² | ❌ |
-| [libfork](https://github.com/ConorWilliams/libfork) | [link](include/coro_util/adapter/libfork) | ✅² | ❌ |
-| [concurrencpp](https://github.com/David-Haim/concurrencpp) | [link](include/coro_util/adapter/concurrencpp) | ❌ | ❌ |
-| [cppcoro](https://github.com/andreasbuhr/cppcoro) | [link](include/coro_util/adapter/cppcoro) | ❌ | ❌ |
-| [libcoro](https://github.com/jbaldwin/libcoro) | [link](include/coro_util/adapter/libcoro) | ❌ | ❌ |
+| [TooManyCooks](https://github.com/tzcnt/TooManyCooks) | [link](include/coro_util/tmc) | ✅ | ✅ |
+| [YACLib](https://github.com/YACLib/YACLib) | [link](include/coro_util/yaclib) | ✅ | ❌ |
+| [Boost.Cobalt](https://github.com/boostorg/cobalt) | [link](include/coro_util/cobalt) | ✅ | ❌ |
+| [Asio / Boost.Asio](https://github.com/chriskohlhoff/asio) | [link](include/coro_util/asio) | ✅¹ ² | ❌ |
+| [Boost.Capy](https://github.com/cppalliance/capy) | [link](include/coro_util/capy) | ✅² | ❌ |
+| [libfork](https://github.com/ConorWilliams/libfork) | [link](include/coro_util/libfork) | ✅² | ❌ |
+| [concurrencpp](https://github.com/David-Haim/concurrencpp) | [link](include/coro_util/concurrencpp) | ❌ | ❌ |
+| [cppcoro](https://github.com/andreasbuhr/cppcoro) | [link](include/coro_util/cppcoro) | ❌ | ❌ |
+| [libcoro](https://github.com/jbaldwin/libcoro) | [link](include/coro_util/libcoro) | ❌ | ❌ |
 
-¹ Works with both standalone Asio (include `adapter/asio/op.hpp`, `asio::`) and
-Boost.Asio (include `adapter/asio/boost_op.hpp`, `boost::asio::`), and covers
+¹ Works with both standalone Asio (include `asio/op.hpp`, `asio::`) and
+Boost.Asio (include `asio/boost_op.hpp`, `boost::asio::`), and covers
 both the `awaitable<T>` and `experimental::coro<>` coroutine types of each.
 
 ² These have a closed `await_transform` and cannot `co_await` a foreign

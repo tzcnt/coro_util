@@ -1,4 +1,4 @@
-#include "coro_util/adapter/tmc/channel.hpp"
+#include "coro_util/tmc/channel.hpp"
 #include "test_common.hpp"
 
 #include <array>
@@ -959,10 +959,10 @@ TEST_F(CATEGORY, try_pull_scope_accessors) {
     chan.post(7u);
 
     auto v = chan.try_pull();
-    EXPECT_TRUE(static_cast<bool>(v));    // operator bool
-    EXPECT_TRUE(v.has_value());           // has_value()
-    EXPECT_EQ(*v, 7u);                    // operator*
-    EXPECT_EQ(*v.operator->(), 7u);       // operator-> (size_t has no members)
+    EXPECT_TRUE(static_cast<bool>(v)); // operator bool
+    EXPECT_TRUE(v.has_value());        // has_value()
+    EXPECT_EQ(*v, 7u);                 // operator*
+    EXPECT_EQ(*v.operator->(), 7u);    // operator-> (size_t has no members)
 
     // Move constructor.
     auto moved = std::move(v);

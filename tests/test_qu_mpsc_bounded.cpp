@@ -1,4 +1,4 @@
-#include "coro_util/adapter/tmc/qu_mpsc_bounded.hpp"
+#include "coro_util/tmc/qu_mpsc_bounded.hpp"
 #include "test_common.hpp"
 
 #include "tmc/ex_cpu_st.hpp"
@@ -758,9 +758,12 @@ TEST_F(CATEGORY, try_pull_zc_scope_move_assign_branches) {
     std::atomic<size_t> count2{0};
     std::atomic<size_t> count3{0};
     {
-      auto q1 = coro_util::qu_mpsc_bounded<destructor_counter, qu_config<true>>{TEST_CAPACITY};
-      auto q2 = coro_util::qu_mpsc_bounded<destructor_counter, qu_config<true>>{TEST_CAPACITY};
-      auto q3 = coro_util::qu_mpsc_bounded<destructor_counter, qu_config<true>>{TEST_CAPACITY};
+      auto q1 =
+        coro_util::qu_mpsc_bounded<destructor_counter, qu_config<true>>{TEST_CAPACITY};
+      auto q2 =
+        coro_util::qu_mpsc_bounded<destructor_counter, qu_config<true>>{TEST_CAPACITY};
+      auto q3 =
+        coro_util::qu_mpsc_bounded<destructor_counter, qu_config<true>>{TEST_CAPACITY};
       EXPECT_TRUE(co_await q1.push(destructor_counter{&count1}));
       EXPECT_TRUE(co_await q2.push(destructor_counter{&count2}));
       EXPECT_TRUE(co_await q3.push(destructor_counter{&count3}));
@@ -801,9 +804,12 @@ TEST_F(CATEGORY, pull_zc_scope_move_assign_branches) {
     std::atomic<size_t> count2{0};
     std::atomic<size_t> count3{0};
     {
-      auto q1 = coro_util::qu_mpsc_bounded<destructor_counter, qu_config<true>>{TEST_CAPACITY};
-      auto q2 = coro_util::qu_mpsc_bounded<destructor_counter, qu_config<true>>{TEST_CAPACITY};
-      auto q3 = coro_util::qu_mpsc_bounded<destructor_counter, qu_config<true>>{TEST_CAPACITY};
+      auto q1 =
+        coro_util::qu_mpsc_bounded<destructor_counter, qu_config<true>>{TEST_CAPACITY};
+      auto q2 =
+        coro_util::qu_mpsc_bounded<destructor_counter, qu_config<true>>{TEST_CAPACITY};
+      auto q3 =
+        coro_util::qu_mpsc_bounded<destructor_counter, qu_config<true>>{TEST_CAPACITY};
       EXPECT_TRUE(co_await q1.push(destructor_counter{&count1}));
       EXPECT_TRUE(co_await q2.push(destructor_counter{&count2}));
       EXPECT_TRUE(co_await q3.push(destructor_counter{&count3}));

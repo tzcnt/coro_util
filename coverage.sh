@@ -29,7 +29,7 @@ CXX="${CXX:-clang++}"
 CC="${CC:-clang}"
 
 # The headers whose coverage we care about: the public headers in the root of
-# ./include/coro_util (the adapter/ subdirectory is excluded). The lcov export,
+# ./include/coro_util (the  subdirectory is excluded). The lcov export,
 # the summary report and the line-by-line show are all scoped to these.
 COVERAGE_SOURCES=(./include/coro_util/*.hpp)
 

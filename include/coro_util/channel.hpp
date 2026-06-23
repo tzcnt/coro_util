@@ -75,7 +75,7 @@ class chan_tok_impl;
 
 /// Creates a new channel and returns an access token to it. Internal plumbing:
 /// callers use the policy-bound make_channel wrapper provided by an adapter
-/// header (e.g. adapter/tmc/channel.hpp).
+/// header (e.g. tmc/channel.hpp).
 namespace detail {
 template <
   typename ContinuationPolicy, typename T,
