@@ -15,7 +15,7 @@
 #include <utility>
 
 namespace coro_util {
-namespace detail {
+namespace impl {
 
 // Captures and restores the current task's executor and priority.
 struct tmc_continuation_policy {
@@ -38,7 +38,7 @@ struct tmc_continuation_policy {
   }
 };
 
-} // namespace detail
+} // namespace impl
 } // namespace coro_util
 
 // The coro_util queue and channel awaitables are runtime-agnostic and carry no

@@ -24,7 +24,7 @@ specific executor type. Instead each is a template:
 
 ```cpp
 template <typename ContinuationPolicy, typename T, typename Config>
-class qu_spsc_bounded_impl { ... };
+class qu_spsc_bounded { ... };
 ```
 
 When a consumer/producer coroutine has to wait (queue empty / full), the queue:
@@ -51,7 +51,7 @@ bind to directly.
 > policy to do beyond `Continuation.resume()`, which is exactly what the inline
 > policy already provides. In that case skip sections 3 and the standalone
 > compile check; your alias headers just `#include "../inline/policy.hpp"` and
-> bind `coro_util::detail::inline_continuation_policy`. The concurrencpp adapter
+> bind `coro_util::impl::inline_continuation_policy`. The concurrencpp adapter
 > (`include/coro_util/concurrencpp`) is the reference for this path:
 > concurrencpp stores no capturable affinity and has no public
 > `get_current_executor()`, so every one of its alias headers binds the generic
@@ -174,7 +174,7 @@ Practical tactics that worked:
 #include <coroutine>
 
 namespace coro_util {
-namespace detail {
+namespace impl {
 struct <lib>_continuation_policy {
   struct state { /* pointers captured from promise or thread-locals */ };
 
@@ -191,12 +191,12 @@ struct <lib>_continuation_policy {
     Continuation.resume();
   }
 };
-} // namespace detail
+} // namespace impl
 } // namespace coro_util
 ```
 
 Notes / pitfalls:
-- Put the policy struct in `coro_util::detail`.
+- Put the policy struct in `coro_util::impl`.
 - The base impl `static_assert`s `state` is default-constructible.
 - If `capture` needs to convert the promise to some base type (e.g. `Job*`),
   rely on the same implicit upcast the library itself uses, and verify it's an
@@ -214,7 +214,7 @@ Notes / pitfalls:
 One per queue + the channel. These are mechanical — copy the YACLib ones and
 swap the policy name. (For an affinity-less library, copy the concurrencpp ones
 instead: they `#include "../inline/policy.hpp"` and bind
-`coro_util::detail::inline_continuation_policy`.) For an affinity-less library,
+`coro_util::impl::inline_continuation_policy`.) For an affinity-less library,
 also follow the concurrencpp comment structure: a single leading `// Provides
 coro_util::<alias>, ...` line that ends with the short parenthetical
 `(<lib> does not support executor affinity)` — don't elaborate on *why* the
@@ -239,7 +239,7 @@ Each looks like:
 namespace coro_util {
 template <typename T, typename Config = coro_util::qu_spsc_bounded_default_config>
 using qu_spsc_bounded =
-  coro_util::qu_spsc_bounded_impl<coro_util::detail::<lib>_continuation_policy, T, Config>;
+  coro_util::impl::qu_spsc_bounded<coro_util::impl::<lib>_continuation_policy, T, Config>;
 }
 ```
 
@@ -247,11 +247,11 @@ using qu_spsc_bounded =
 
 ```cpp
 template <typename T, typename Config = coro_util::chan_default_config>
-using chan_tok = coro_util::chan_tok_impl<coro_util::detail::<lib>_continuation_policy, T, Config>;
+using chan_tok = coro_util::impl::chan_tok<coro_util::impl::<lib>_continuation_policy, T, Config>;
 
 template <typename T, typename Config = coro_util::chan_default_config>
 inline chan_tok<T, Config> make_channel() noexcept {
-  return coro_util::detail::make_channel<coro_util::detail::<lib>_continuation_policy, T, Config>();
+  return coro_util::impl::make_channel<coro_util::impl::<lib>_continuation_policy, T, Config>();
 }
 ```
 
@@ -265,10 +265,10 @@ through a real coroutine of the target library so the templates instantiate:
 struct probe {
   bool await_ready() const noexcept { return false; }
   template <typename P> bool await_suspend(std::coroutine_handle<P> h) noexcept {
-    auto s = coro_util::detail::<lib>_continuation_policy::capture(h);
+    auto s = coro_util::impl::<lib>_continuation_policy::capture(h);
     std::coroutine_handle<> e = h;
-    coro_util::detail::<lib>_continuation_policy::resume(s, e);
-    coro_util::detail::<lib>_continuation_policy::resume_inline(s, e);
+    coro_util::impl::<lib>_continuation_policy::resume(s, e);
+    coro_util::impl::<lib>_continuation_policy::resume_inline(s, e);
     return false;
   }
   void await_resume() const noexcept {}

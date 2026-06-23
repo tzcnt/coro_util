@@ -12,7 +12,7 @@
 // Consumers retrieve values in FIFO order with co_await pull().
 // If no values are available, the consumer will suspend until a value is ready.
 
-// Access to the channel is through a token `chan_tok_impl` which shares ownership of
+// Access to the channel is through a token `chan_tok` which shares ownership of
 // the channel through reference counting, as well as holds a hazard pointer to
 // the block in use. Any number of tokens can access the channel simultaneously,
 // but access to a single token is not thread-safe. A token copy should be
@@ -63,6 +63,8 @@ struct chan_default_config {
   static inline constexpr bool ElementPadding = true;
 };
 
+namespace impl {
+
 /// Tokens share ownership of a channel by reference counting.
 /// Access to the channel (from multiple tokens) is thread-safe,
 /// but access to a single token from multiple threads is not.
@@ -71,17 +73,15 @@ struct chan_default_config {
 template <
   typename ContinuationPolicy, typename T,
   typename Config = coro_util::chan_default_config>
-class chan_tok_impl;
+class chan_tok;
 
 /// Creates a new channel and returns an access token to it. Internal plumbing:
 /// callers use the policy-bound make_channel wrapper provided by an adapter
 /// header (e.g. tmc/channel.hpp).
-namespace detail {
 template <
   typename ContinuationPolicy, typename T,
   typename Config = coro_util::chan_default_config>
-inline chan_tok_impl<ContinuationPolicy, T, Config> make_channel() noexcept;
-} // namespace detail
+inline chan_tok<ContinuationPolicy, T, Config> make_channel() noexcept;
 
 template <
   typename ContinuationPolicy, typename T,
@@ -90,7 +90,6 @@ class channel;
 template <typename T> class chan_zc_scope;
 template <typename T> class chan_try_pull_zc_scope;
 
-namespace detail {
 class tiny_lock {
   std::atomic_flag m_is_locked;
 
@@ -119,7 +118,7 @@ public:
 
 #ifndef NDEBUG
 #define CORO_UTIL_CHANNEL_NO_CONCURRENT_ACCESS_LOCK                                      \
-  coro_util::detail::tiny_lock no_concurrent_access_lock_;
+  coro_util::impl::tiny_lock no_concurrent_access_lock_;
 #define CORO_UTIL_CHANNEL_ASSERT_NO_CONCURRENT_ACCESS()                                  \
   assert(                                                                                \
     no_concurrent_access_lock_.try_lock() &&                                             \
@@ -127,7 +126,7 @@ public:
     "separate chan_tok via new_token() or the copy constructor for each individual "     \
     "task that uses the channel."                                                        \
   );                                                                                     \
-  coro_util::detail::concurrent_access_scope concurrent_access_check_(                   \
+  coro_util::impl::concurrent_access_scope concurrent_access_check_(                     \
     no_concurrent_access_lock_                                                           \
   )
 #else
@@ -182,9 +181,9 @@ class alignas(CORO_UTIL_CACHE_LINE_SIZE) hazard_ptr {
   std::atomic<size_t> next_protect_read;
 
   template <typename ContinuationPolicy, typename T, typename Config>
-  friend class coro_util::channel;
-  template <typename T> friend class coro_util::chan_zc_scope;
-  template <typename T> friend class coro_util::chan_try_pull_zc_scope;
+  friend class coro_util::impl::channel;
+  template <typename T> friend class coro_util::impl::chan_zc_scope;
+  template <typename T> friend class coro_util::impl::chan_try_pull_zc_scope;
 
   static inline constexpr size_t InactiveHazptrOffset = static_cast<size_t>(1)
                                                         << (CORO_UTIL_PLATFORM_BITS - 2);
@@ -234,8 +233,6 @@ public:
 };
 CORO_UTIL_DISABLE_WARNING_PADDED_END
 
-} // namespace detail
-
 /// A zero-copy handle to an object in the channel's storage. The object is
 /// exclusively available to this handle. When this handle is destroyed, the
 /// channel object will be destroyed and the channel slot will be freed for
@@ -244,18 +241,18 @@ CORO_UTIL_DISABLE_WARNING_PADDED_END
 /// If the channel has been closed and is drained, `pull()` will resume with an
 /// empty `chan_zc_scope` (`has_value()` / `operator bool()` returns false).
 template <typename T> class chan_zc_scope {
-  using hazard_ptr = coro_util::detail::hazard_ptr;
+  using hazard_ptr = coro_util::impl::hazard_ptr;
   hazard_ptr* haz_ptr;
-  coro_util::detail::qu_storage<T>* data;
+  coro_util::impl::qu_storage<T>* data;
   size_t release_idx;
 
   template <typename ContinuationPolicy, typename U, typename Config>
-  friend class coro_util::channel;
+  friend class coro_util::impl::channel;
   template <typename ContinuationPolicy, typename U, typename Config>
-  friend class coro_util::chan_tok_impl;
+  friend class coro_util::impl::chan_tok;
 
   chan_zc_scope(
-    hazard_ptr* Haz, coro_util::detail::qu_storage<T>* Data, size_t ReleaseIdx
+    hazard_ptr* Haz, coro_util::impl::qu_storage<T>* Data, size_t ReleaseIdx
   ) noexcept
       : haz_ptr{Haz}, data{Data}, release_idx{ReleaseIdx} {}
 
@@ -321,20 +318,20 @@ public:
 /// `qu_err::OK` if a value is held, `EMPTY` if no value was available, or
 /// `CLOSED` if the channel has been closed and drained.
 template <typename T> class chan_try_pull_zc_scope {
-  using hazard_ptr = coro_util::detail::hazard_ptr;
+  using hazard_ptr = coro_util::impl::hazard_ptr;
   hazard_ptr* haz_ptr;
-  coro_util::detail::qu_storage<T>* data;
+  coro_util::impl::qu_storage<T>* data;
   size_t release_idx;
   coro_util::qu_err err;
 
   template <typename ContinuationPolicy, typename U, typename Config>
-  friend class coro_util::channel;
+  friend class coro_util::impl::channel;
   template <typename ContinuationPolicy, typename U, typename Config>
-  friend class coro_util::chan_tok_impl;
+  friend class coro_util::impl::chan_tok;
 
   // Holds a value dequeued from the channel (status OK).
   chan_try_pull_zc_scope(
-    hazard_ptr* Haz, coro_util::detail::qu_storage<T>* Data, size_t ReleaseIdx
+    hazard_ptr* Haz, coro_util::impl::qu_storage<T>* Data, size_t ReleaseIdx
   ) noexcept
       : haz_ptr{Haz}, data{Data}, release_idx{ReleaseIdx}, err{coro_util::qu_err::OK} {}
 
@@ -431,9 +428,9 @@ template <typename ContinuationPolicy, typename T, typename Config> class channe
   static inline constexpr size_t InactiveHazptrOffset = static_cast<size_t>(1)
                                                         << (CORO_UTIL_PLATFORM_BITS - 2);
 
-  friend chan_tok_impl<ContinuationPolicy, T, Config>;
+  friend chan_tok<ContinuationPolicy, T, Config>;
   template <typename CPc, typename Tc, typename Cc>
-  friend chan_tok_impl<CPc, Tc, Cc> detail::make_channel() noexcept;
+  friend chan_tok<CPc, Tc, Cc> make_channel() noexcept;
 
 public:
   class aw_pull;
@@ -459,10 +456,10 @@ private:
     static_assert(alignof(consumer_base) >= 4);
 
   public:
-    coro_util::detail::qu_storage<T> data;
+    coro_util::impl::qu_storage<T> data;
 
     static constexpr size_t UNPADLEN =
-      sizeof(std::atomic<void*>) + sizeof(coro_util::detail::qu_storage<T>);
+      sizeof(std::atomic<void*>) + sizeof(coro_util::impl::qu_storage<T>);
     static constexpr size_t WANTLEN =
       (UNPADLEN + CORO_UTIL_CACHE_LINE_SIZE - 1) &
       static_cast<size_t>(0 - CORO_UTIL_CACHE_LINE_SIZE); // round up to
@@ -555,7 +552,7 @@ private:
   std::atomic<size_t> write_closed_at;
 
   // Written by get_hazard_ptr()
-  using hazard_ptr = coro_util::detail::hazard_ptr;
+  using hazard_ptr = coro_util::impl::hazard_ptr;
   std::atomic<size_t> haz_ptr_counter;
   std::atomic<hazard_ptr*> hazard_ptr_list;
 
@@ -935,7 +932,7 @@ private:
   // Idx will be initialized by this function
   element* get_write_ticket(hazard_ptr* Haz, size_t& Idx) noexcept {
     size_t actOff = Haz->next_protect_write.load(std::memory_order_relaxed);
-    Haz->active_offset.store(actOff, coro_util::detail::hazptr_protect_order);
+    Haz->active_offset.store(actOff, coro_util::impl::hazptr_protect_order);
 
     // seq_cst is needed here to create a StoreLoad barrier between setting
     // hazptr and loading the block
@@ -972,7 +969,7 @@ private:
     hazard_ptr* Haz, size_t Count, size_t& StartIdx, size_t& EndIdx
   ) noexcept {
     size_t actOff = Haz->next_protect_write.load(std::memory_order_relaxed);
-    Haz->active_offset.store(actOff, coro_util::detail::hazptr_protect_order);
+    Haz->active_offset.store(actOff, coro_util::impl::hazptr_protect_order);
 
     // seq_cst is needed here to create a StoreLoad barrier between setting
     // hazptr and loading the block
@@ -1020,7 +1017,7 @@ private:
   // Idx will be initialized by this function
   element* get_read_ticket(hazard_ptr* Haz, size_t& Idx) noexcept {
     size_t actOff = Haz->next_protect_read.load(std::memory_order_relaxed);
-    Haz->active_offset.store(actOff, coro_util::detail::hazptr_protect_order);
+    Haz->active_offset.store(actOff, coro_util::impl::hazptr_protect_order);
 
     // seq_cst is needed here to create a StoreLoad barrier between setting
     // hazptr and loading the block
@@ -1189,7 +1186,7 @@ public:
     channel& chan;
     hazard_ptr* haz_ptr;
 
-    friend chan_tok_impl<ContinuationPolicy, T, Config>;
+    friend chan_tok<ContinuationPolicy, T, Config>;
 
     aw_pull(channel& Chan, hazard_ptr* Haz) noexcept : chan(Chan), haz_ptr{Haz} {}
 
@@ -1432,16 +1429,16 @@ public:
   channel& operator=(channel&&) = delete;
 };
 
-template <typename ContinuationPolicy, typename T, typename Config> class chan_tok_impl {
+template <typename ContinuationPolicy, typename T, typename Config> class chan_tok {
   using chan_t = channel<ContinuationPolicy, T, Config>;
-  using hazard_ptr = coro_util::detail::hazard_ptr;
+  using hazard_ptr = coro_util::impl::hazard_ptr;
   std::shared_ptr<chan_t> chan;
   hazard_ptr* haz_ptr;
   CORO_UTIL_CHANNEL_NO_CONCURRENT_ACCESS_LOCK
 
-  friend chan_tok_impl detail::make_channel<ContinuationPolicy, T, Config>() noexcept;
+  friend chan_tok make_channel<ContinuationPolicy, T, Config>() noexcept;
 
-  chan_tok_impl(std::shared_ptr<chan_t>&& Chan) noexcept
+  chan_tok(std::shared_ptr<chan_t>&& Chan) noexcept
       : chan{std::move(Chan)}, haz_ptr{nullptr} {}
 
   hazard_ptr* get_hazard_ptr() noexcept {
@@ -1491,9 +1488,9 @@ public:
   /// May suspend until a value is available, or the channel is closed.
   ///
   /// WARNING: The `chan_zc_scope` uses the same hazard pointer as this
-  /// `chan_tok_impl` ! For correct operation, you MUST release or destroy the
+  /// `chan_tok` ! For correct operation, you MUST release or destroy the
   /// returned `chan_zc_scope` before calling another member function on this
-  /// `chan_tok_impl`, and before this `chan_tok_impl` goes out of scope! The
+  /// `chan_tok`, and before this `chan_tok` goes out of scope! The
   /// safest way to accomplish this is to tie its scope to the loop:
   /// `while (auto data = co_await chan.pull()) { process(data.value()); }`
   [[nodiscard(
@@ -1521,9 +1518,9 @@ public:
   /// value was dequeued, or false if the channel was empty or closed.
   ///
   /// WARNING: The `chan_try_pull_zc_scope` uses the same hazard pointer as this
-  /// `chan_tok_impl` ! For correct operation, you MUST release or destroy the
+  /// `chan_tok` ! For correct operation, you MUST release or destroy the
   /// returned scope before calling another member function on this
-  /// `chan_tok_impl`, and before this `chan_tok_impl` goes out of scope! The
+  /// `chan_tok`, and before this `chan_tok` goes out of scope! The
   /// safest way to accomplish this is to tie its scope to the loop:
   /// `while (auto data = chan.try_pull()) { process(data.value()); }`
   chan_try_pull_zc_scope<T> try_pull() noexcept {
@@ -1621,22 +1618,21 @@ public:
   /// If true, spent blocks will be cleared and moved to the tail of the queue.
   /// If false, spent blocks will be deleted.
   /// Default: true
-  chan_tok_impl& set_reuse_blocks(bool Reuse) noexcept {
+  chan_tok& set_reuse_blocks(bool Reuse) noexcept {
     chan->ReuseBlocks.store(Reuse, std::memory_order_relaxed);
     return *this;
   }
 
-  /// Copy Constructor: The new chan_tok_impl will have its own hazard pointer so
+  /// Copy Constructor: The new chan_tok will have its own hazard pointer so
   /// that it can be used concurrently with the other token.
   ///
   /// If the other token is from a different channel, this token will now point
   /// to that channel.
-  chan_tok_impl(const chan_tok_impl& Other) noexcept
-      : chan(Other.chan), haz_ptr{nullptr} {}
+  chan_tok(const chan_tok& Other) noexcept : chan(Other.chan), haz_ptr{nullptr} {}
 
   /// Copy Assignment: If the other token is from a different channel, this
   /// token will now point to that channel.
-  chan_tok_impl& operator=(const chan_tok_impl& Other) noexcept {
+  chan_tok& operator=(const chan_tok& Other) noexcept {
     if (chan != Other.chan) {
       free_hazard_ptr();
       chan = Other.chan;
@@ -1648,11 +1644,11 @@ public:
   /// the intent more explicit - that a new token is being created which will
   /// independently own a reference count and hazard pointer to the underlying
   /// channel.
-  chan_tok_impl new_token() noexcept { return chan_tok_impl(*this); }
+  chan_tok new_token() noexcept { return chan_tok(*this); }
 
   /// Move Constructor: The moved-from token will become empty; it will release
   /// its channel pointer, and its hazard pointer.
-  chan_tok_impl(chan_tok_impl&& Other) noexcept
+  chan_tok(chan_tok&& Other) noexcept
       : chan(std::move(Other.chan)), haz_ptr{Other.haz_ptr} {
     Other.haz_ptr = nullptr;
   }
@@ -1662,7 +1658,7 @@ public:
   ///
   /// If the other token is from a different channel, this token will now point
   /// to that channel.
-  chan_tok_impl& operator=(chan_tok_impl&& Other) noexcept {
+  chan_tok& operator=(chan_tok&& Other) noexcept {
     if (chan != Other.chan) {
       free_hazard_ptr();
       haz_ptr = Other.haz_ptr;
@@ -1685,17 +1681,17 @@ public:
   /// channel will also be destroyed. If the channel was not drained and any
   /// data remains in the channel, the destructor will also be called for each
   /// remaining data element.
-  ~chan_tok_impl() { free_hazard_ptr(); }
+  ~chan_tok() { free_hazard_ptr(); }
 };
 
-namespace detail {
 template <typename ContinuationPolicy, typename T, typename Config>
-inline chan_tok_impl<ContinuationPolicy, T, Config> make_channel() noexcept {
+inline chan_tok<ContinuationPolicy, T, Config> make_channel() noexcept {
   auto chan = new channel<ContinuationPolicy, T, Config>();
-  return chan_tok_impl<ContinuationPolicy, T, Config>{
+  return chan_tok<ContinuationPolicy, T, Config>{
     std::shared_ptr<channel<ContinuationPolicy, T, Config>>(chan)
   };
 }
-} // namespace detail
+
+} // namespace impl
 
 } // namespace coro_util

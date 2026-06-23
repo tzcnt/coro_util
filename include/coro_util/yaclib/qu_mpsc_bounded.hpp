@@ -5,8 +5,8 @@
 
 #pragma once
 
-// Provides coro_util::qu_mpsc_bounded, the qu_mpsc_bounded_impl queue bound to
-// the YACLib continuation policy.
+// Provides coro_util::qu_mpsc_bounded, the coro_util::impl::qu_mpsc_bounded queue bound
+// to the YACLib continuation policy.
 
 #include "policy.hpp"
 
@@ -15,7 +15,7 @@
 namespace coro_util {
 
 template <typename T, typename Config = coro_util::qu_mpsc_bounded_default_config>
-using qu_mpsc_bounded = coro_util::qu_mpsc_bounded_impl<
-  coro_util::detail::yaclib_continuation_policy, T, Config>;
+using qu_mpsc_bounded = coro_util::impl::qu_mpsc_bounded<
+  coro_util::impl::yaclib_continuation_policy, T, Config>;
 
 } // namespace coro_util

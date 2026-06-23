@@ -11,7 +11,7 @@
 #include <coroutine>
 
 namespace coro_util {
-namespace detail {
+namespace impl {
 // YACLib captures executor affinity in each task promise via a
 // yaclib::detail::BaseCore::_executor pointer. A YACLib coroutine promise is also a
 // yaclib::Job, so the standard way to reschedule a suspended coroutine onto its executor
@@ -39,5 +39,5 @@ struct yaclib_continuation_policy {
   }
 };
 
-} // namespace detail
+} // namespace impl
 } // namespace coro_util

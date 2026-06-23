@@ -12,7 +12,7 @@
 #include <coroutine>
 
 namespace coro_util {
-namespace detail {
+namespace impl {
 // boost::cobalt is a coroutine layer over boost::asio. Every cobalt coroutine runs on an
 // asio executor (boost::cobalt::executor == boost::asio::any_io_executor by default), and
 // a task promise carries that executor via get_executor() - propagated from the awaiter
@@ -46,5 +46,5 @@ struct cobalt_continuation_policy {
   }
 };
 
-} // namespace detail
+} // namespace impl
 } // namespace coro_util

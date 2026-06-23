@@ -5,7 +5,7 @@
 
 #pragma once
 
-// Provides coro_util::qu_mpsc_bounded_impl, an async MPSC bounded linearizable
+// Provides coro_util::qu_mpsc_bounded, an async MPSC bounded linearizable
 // queue. All enqueue and dequeue operations are zero-copy. A single allocation
 // is created in the constructor. Subsequent operations are allocation-free.
 
@@ -37,10 +37,12 @@ struct qu_mpsc_bounded_default_config {
   static inline constexpr bool ElementPadding = true;
 };
 
+namespace impl {
+
 template <
   typename ContinuationPolicy, typename T,
   typename Config = coro_util::qu_mpsc_bounded_default_config>
-class qu_mpsc_bounded_impl {
+class qu_mpsc_bounded {
   static inline constexpr bool ConsumerCanSuspend = Config::ConsumerCanSuspend;
 
   // Flag bits in element::flags. Upper bits encode the input producer_base*
@@ -111,12 +113,12 @@ class qu_mpsc_bounded_impl {
     // and destroyed.
     std::atomic<size_t> waiting_consumer_idx;
 
-    coro_util::detail::qu_storage<T> data;
+    coro_util::impl::qu_storage<T> data;
 
     static constexpr size_t UNPADLEN =
       sizeof(std::atomic<uintptr_t>) + sizeof(producer_base*) +
       sizeof(std::atomic<consumer_base*>) + sizeof(std::atomic<size_t>) +
-      sizeof(coro_util::detail::qu_storage<T>);
+      sizeof(coro_util::impl::qu_storage<T>);
     static constexpr size_t WANTLEN = (UNPADLEN + CORO_UTIL_CACHE_LINE_SIZE - 1) &
                                       static_cast<size_t>(0 - CORO_UTIL_CACHE_LINE_SIZE);
     static constexpr size_t PADLEN = UNPADLEN < WANTLEN ? (WANTLEN - UNPADLEN) : 999;
@@ -169,13 +171,13 @@ public:
   /// `qu_err::OK` if a value is held, `EMPTY` if no value was
   /// available, or `CLOSED` if the queue has been closed and drained.
   class try_pull_zc_scope {
-    friend qu_mpsc_bounded_impl;
-    qu_mpsc_bounded_impl* queue;
+    friend qu_mpsc_bounded;
+    qu_mpsc_bounded* queue;
     element* elem;
     size_t idx;
     coro_util::qu_err err;
 
-    try_pull_zc_scope(qu_mpsc_bounded_impl* Queue, element* Elem, size_t Idx) noexcept
+    try_pull_zc_scope(qu_mpsc_bounded* Queue, element* Elem, size_t Idx) noexcept
         : queue{Queue}, elem{Elem}, idx{Idx}, err{coro_util::qu_err::OK} {}
 
     explicit try_pull_zc_scope(coro_util::qu_err Err) noexcept
@@ -250,12 +252,12 @@ public:
   /// If the queue has been closed and is drained, `pull()` will resume
   /// with an empty `pull_zc_scope` (operator bool returns false).
   class pull_zc_scope {
-    friend qu_mpsc_bounded_impl;
-    qu_mpsc_bounded_impl* queue;
+    friend qu_mpsc_bounded;
+    qu_mpsc_bounded* queue;
     element* elem;
     size_t idx;
 
-    pull_zc_scope(qu_mpsc_bounded_impl* Queue, element* Elem, size_t Idx) noexcept
+    pull_zc_scope(qu_mpsc_bounded* Queue, element* Elem, size_t Idx) noexcept
         : queue{Queue}, elem{Elem}, idx{Idx} {}
 
   public:
@@ -311,8 +313,8 @@ public:
     }
   };
 
-  /// Constructs a qu_mpsc_bounded_impl with the given capacity.
-  explicit qu_mpsc_bounded_impl(size_t Capacity) noexcept
+  /// Constructs a qu_mpsc_bounded with the given capacity.
+  explicit qu_mpsc_bounded(size_t Capacity) noexcept
       : capacity{Capacity}, values{new element[Capacity]} {
     assert(Capacity > 0 && "Capacity must be greater than 0");
     // Ensure that the subtraction of unsigned offsets always results in a
@@ -814,7 +816,7 @@ public:
   /// 4. Ensure no further queue method calls will occur (e.g. by joining all
   ///    producer and consumer coroutines).
   /// 5. Destroy the queue.
-  ~qu_mpsc_bounded_impl() {
+  ~qu_mpsc_bounded() {
     close();
     size_t end = write_closed_at.load(std::memory_order_relaxed);
     size_t idx = read_offset;
@@ -829,17 +831,17 @@ public:
     delete[] values;
   }
 
-  qu_mpsc_bounded_impl(const qu_mpsc_bounded_impl&) = delete;
-  qu_mpsc_bounded_impl& operator=(const qu_mpsc_bounded_impl&) = delete;
-  qu_mpsc_bounded_impl(qu_mpsc_bounded_impl&&) = delete;
-  qu_mpsc_bounded_impl& operator=(qu_mpsc_bounded_impl&&) = delete;
+  qu_mpsc_bounded(const qu_mpsc_bounded&) = delete;
+  qu_mpsc_bounded& operator=(const qu_mpsc_bounded&) = delete;
+  qu_mpsc_bounded(qu_mpsc_bounded&&) = delete;
+  qu_mpsc_bounded& operator=(qu_mpsc_bounded&&) = delete;
 
   /// Returns a `bool` when awaited: `true` on successful enqueue, `false`
   /// if the queue was closed.
   template <typename... Args> class aw_push final {
-    friend qu_mpsc_bounded_impl<ContinuationPolicy, T, Config>;
+    friend qu_mpsc_bounded<ContinuationPolicy, T, Config>;
 
-    qu_mpsc_bounded_impl& queue;
+    qu_mpsc_bounded& queue;
     // Construction args are stored as references (T& for lvalue inputs, T&&
     // for rvalue / temporary inputs) so we never copy or move them into the
     // awaitable. T itself need not be movable; it will be emplace-constructed
@@ -850,12 +852,12 @@ public:
     // across both the suspension and the resumption.
     std::tuple<Args&&...> args;
 
-    aw_push(qu_mpsc_bounded_impl& Queue, Args&&... ConstructArgs) noexcept
+    aw_push(qu_mpsc_bounded& Queue, Args&&... ConstructArgs) noexcept
         : queue(Queue), args(static_cast<Args&&>(ConstructArgs)...) {}
 
     struct aw_push_impl final {
       producer_base base;
-      qu_mpsc_bounded_impl& queue;
+      qu_mpsc_bounded& queue;
       std::tuple<Args&&...>& args;
       element* elem;
       bool closed_before_enqueue;
@@ -933,22 +935,22 @@ public:
     };
 
   public:
-    using queue_type = qu_mpsc_bounded_impl;
+    using queue_type = qu_mpsc_bounded;
 
     aw_push_impl operator co_await() && noexcept { return aw_push_impl(*this); }
   };
 
   /// Returns a `pull_zc_scope` when awaited.
   class aw_pull final {
-    friend qu_mpsc_bounded_impl<ContinuationPolicy, T, Config>;
+    friend qu_mpsc_bounded<ContinuationPolicy, T, Config>;
 
-    qu_mpsc_bounded_impl& queue;
+    qu_mpsc_bounded& queue;
 
-    aw_pull(qu_mpsc_bounded_impl& Queue) noexcept : queue(Queue) {}
+    aw_pull(qu_mpsc_bounded& Queue) noexcept : queue(Queue) {}
 
     struct aw_pull_impl final {
       consumer_base base;
-      qu_mpsc_bounded_impl& queue;
+      qu_mpsc_bounded& queue;
 
       aw_pull_impl(aw_pull& Parent) noexcept
           : base{{}, nullptr, nullptr, 0}, queue{Parent.queue} {}
@@ -982,7 +984,7 @@ public:
       template <typename Promise>
       bool await_suspend(std::coroutine_handle<Promise> Outer) noexcept {
         consumer_base* const self = &base;
-        qu_mpsc_bounded_impl* const q = &queue;
+        qu_mpsc_bounded* const q = &queue;
         self->continuation_state = ContinuationPolicy::capture(Outer);
         self->continuation = std::coroutine_handle<>::from_address(Outer.address());
 
@@ -1053,10 +1055,11 @@ public:
     };
 
   public:
-    using queue_type = qu_mpsc_bounded_impl;
+    using queue_type = qu_mpsc_bounded;
 
     aw_pull_impl operator co_await() && noexcept { return aw_pull_impl(*this); }
   };
 };
+} // namespace impl
 
 } // namespace coro_util

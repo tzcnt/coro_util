@@ -130,7 +130,7 @@ static_assert(std::atomic<uintptr_t>::is_always_lock_free);
 static_assert(std::atomic<size_t>::is_always_lock_free);
 
 namespace coro_util {
-namespace detail {
+namespace impl {
 // Shared uninitialized storage type used by all queues.
 // Lifecycle of the embedded object is managed by the queue.
 template <typename T> struct qu_storage {
@@ -185,7 +185,7 @@ template <typename T> struct qu_storage {
   qu_storage(const qu_storage&) = delete;
   qu_storage& operator=(const qu_storage&) = delete;
 };
-} // namespace detail
+} // namespace impl
 
 /// Status code returned by try_pull().status()
 enum class qu_err { OK, EMPTY, CLOSED };

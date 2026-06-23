@@ -5,7 +5,7 @@
 
 #pragma once
 
-// Provides coro_util::qu_mpsc_unbounded_impl, an async MPSC unbounded linearizable
+// Provides coro_util::qu_mpsc_unbounded, an async MPSC unbounded linearizable
 // queue. All enqueue and dequeue operations are zero-copy.
 
 // Uses a similar fetch-add slot acquisition scheme + linked list of blocks like
@@ -38,7 +38,7 @@ struct qu_mpsc_unbounded_default_config {
   static inline constexpr bool ConsumerCanSuspend = true;
 
   /// The number of elements that can be stored in each block in the
-  /// qu_mpsc_unbounded_impl linked list.
+  /// qu_mpsc_unbounded linked list.
   static inline constexpr size_t BlockSize = 256;
 
   /// If true, queue elements will be padded up to the next increment of 64
@@ -47,10 +47,12 @@ struct qu_mpsc_unbounded_default_config {
   static inline constexpr bool ElementPadding = true;
 };
 
+namespace impl {
+
 template <
   typename ContinuationPolicy, typename T,
   typename Config = coro_util::qu_mpsc_unbounded_default_config>
-class qu_mpsc_unbounded_impl {
+class qu_mpsc_unbounded {
   static_assert(std::is_nothrow_destructible_v<T>);
 
   static inline constexpr size_t BlockSize = Config::BlockSize;
@@ -86,10 +88,10 @@ class qu_mpsc_unbounded_impl {
 
   struct element {
     std::atomic<void*> flags;
-    coro_util::detail::qu_storage<T> data;
+    coro_util::impl::qu_storage<T> data;
 
     static constexpr size_t UNPADLEN =
-      sizeof(std::atomic<void*>) + sizeof(coro_util::detail::qu_storage<T>);
+      sizeof(std::atomic<void*>) + sizeof(coro_util::impl::qu_storage<T>);
     static constexpr size_t WANTLEN =
       (UNPADLEN + CORO_UTIL_CACHE_LINE_SIZE - 1) &
       static_cast<size_t>(0 - CORO_UTIL_CACHE_LINE_SIZE); // round up to
@@ -213,15 +215,15 @@ public:
   /// `qu_err::OK` if a value is held, `EMPTY` if no value was
   /// available, or `CLOSED` if the queue has been closed and drained.
   class try_pull_zc_scope {
-    friend qu_mpsc_unbounded_impl;
-    qu_mpsc_unbounded_impl* queue;
+    friend qu_mpsc_unbounded;
+    qu_mpsc_unbounded* queue;
     element* elem;
     data_block* block;
     size_t idx;
     coro_util::qu_err err;
 
     try_pull_zc_scope(
-      qu_mpsc_unbounded_impl* Queue, element* Elem, data_block* Block, size_t Idx
+      qu_mpsc_unbounded* Queue, element* Elem, data_block* Block, size_t Idx
     ) noexcept
         : queue{Queue}, elem{Elem}, block{Block}, idx{Idx}, err{coro_util::qu_err::OK} {}
 
@@ -300,14 +302,14 @@ public:
   /// If the queue has been closed and is drained, `pull()` will resume
   /// with an empty `pull_zc_scope` (operator bool returns false).
   class pull_zc_scope {
-    friend qu_mpsc_unbounded_impl;
-    qu_mpsc_unbounded_impl* queue;
+    friend qu_mpsc_unbounded;
+    qu_mpsc_unbounded* queue;
     element* elem;
     data_block* block;
     size_t idx;
 
     pull_zc_scope(
-      qu_mpsc_unbounded_impl* Queue, element* Elem, data_block* Block, size_t Idx
+      qu_mpsc_unbounded* Queue, element* Elem, data_block* Block, size_t Idx
     ) noexcept
         : queue{Queue}, elem{Elem}, block{Block}, idx{Idx} {}
 
@@ -365,7 +367,7 @@ public:
     }
   };
 
-  qu_mpsc_unbounded_impl() noexcept {
+  qu_mpsc_unbounded() noexcept {
     data_block* block = new data_block(0);
     head_block = block;
     write_block.store(block, std::memory_order_relaxed);
@@ -908,15 +910,15 @@ public:
 
   /// Returns a `pull_zc_scope` when awaited.
   class aw_pull final {
-    friend qu_mpsc_unbounded_impl<ContinuationPolicy, T, Config>;
+    friend qu_mpsc_unbounded<ContinuationPolicy, T, Config>;
 
-    qu_mpsc_unbounded_impl& queue;
+    qu_mpsc_unbounded& queue;
 
-    aw_pull(qu_mpsc_unbounded_impl& Queue) noexcept : queue(Queue) {}
+    aw_pull(qu_mpsc_unbounded& Queue) noexcept : queue(Queue) {}
 
     struct aw_pull_impl final {
       consumer_base base;
-      qu_mpsc_unbounded_impl& queue;
+      qu_mpsc_unbounded& queue;
       data_block* block;
       size_t idx;
 
@@ -953,7 +955,7 @@ public:
     };
 
   public:
-    using queue_type = qu_mpsc_unbounded_impl;
+    using queue_type = qu_mpsc_unbounded;
 
     aw_pull_impl operator co_await() && noexcept { return aw_pull_impl(*this); }
   };
@@ -1031,7 +1033,7 @@ public:
   /// 4. Ensure no further queue method calls will occur (e.g. by joining all
   ///    producer and consumer coroutines).
   /// 5. Destroy the queue.
-  ~qu_mpsc_unbounded_impl() {
+  ~qu_mpsc_unbounded() {
     close();
     {
       // close() published a CLOSED sentinel at write_closed_at; that slot
@@ -1060,10 +1062,12 @@ public:
     }
   }
 
-  qu_mpsc_unbounded_impl(const qu_mpsc_unbounded_impl&) = delete;
-  qu_mpsc_unbounded_impl& operator=(const qu_mpsc_unbounded_impl&) = delete;
-  qu_mpsc_unbounded_impl(qu_mpsc_unbounded_impl&&) = delete;
-  qu_mpsc_unbounded_impl& operator=(qu_mpsc_unbounded_impl&&) = delete;
+  qu_mpsc_unbounded(const qu_mpsc_unbounded&) = delete;
+  qu_mpsc_unbounded& operator=(const qu_mpsc_unbounded&) = delete;
+  qu_mpsc_unbounded(qu_mpsc_unbounded&&) = delete;
+  qu_mpsc_unbounded& operator=(qu_mpsc_unbounded&&) = delete;
 };
+
+} // namespace impl
 
 } // namespace coro_util

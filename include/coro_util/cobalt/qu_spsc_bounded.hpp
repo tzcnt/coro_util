@@ -5,8 +5,8 @@
 
 #pragma once
 
-// Provides coro_util::qu_spsc_bounded, the qu_spsc_bounded_impl queue bound to
-// the boost::cobalt continuation policy.
+// Provides coro_util::qu_spsc_bounded, the coro_util::impl::qu_spsc_bounded queue bound
+// to the boost::cobalt continuation policy.
 
 #include "policy.hpp"
 
@@ -15,7 +15,7 @@
 namespace coro_util {
 
 template <typename T, typename Config = coro_util::qu_spsc_bounded_default_config>
-using qu_spsc_bounded = coro_util::qu_spsc_bounded_impl<
-  coro_util::detail::cobalt_continuation_policy, T, Config>;
+using qu_spsc_bounded = coro_util::impl::qu_spsc_bounded<
+  coro_util::impl::cobalt_continuation_policy, T, Config>;
 
 } // namespace coro_util

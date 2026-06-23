@@ -9,7 +9,7 @@
 
 namespace coro_util {
 
-namespace detail {
+namespace impl {
 struct inline_continuation_policy {
   struct state {};
 
@@ -26,6 +26,6 @@ struct inline_continuation_policy {
     Continuation.resume();
   }
 };
-} // namespace detail
+} // namespace impl
 
 } // namespace coro_util

@@ -5,7 +5,7 @@
 
 #pragma once
 
-// Provides coro_util::qu_mpsc_unbounded, the qu_mpsc_unbounded_impl queue
+// Provides coro_util::qu_mpsc_unbounded, the coro_util::impl::qu_mpsc_unbounded queue
 // bound to the TooManyCooks continuation policy.
 
 #include "policy.hpp"
@@ -15,7 +15,7 @@
 namespace coro_util {
 
 template <typename T, typename Config = coro_util::qu_mpsc_unbounded_default_config>
-using qu_mpsc_unbounded = coro_util::qu_mpsc_unbounded_impl<
-  coro_util::detail::tmc_continuation_policy, T, Config>;
+using qu_mpsc_unbounded =
+  coro_util::impl::qu_mpsc_unbounded<coro_util::impl::tmc_continuation_policy, T, Config>;
 
 } // namespace coro_util

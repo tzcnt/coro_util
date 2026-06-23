@@ -5,8 +5,8 @@
 
 #pragma once
 
-// Provides coro_util::qu_mpsc_bounded, the qu_mpsc_bounded_impl queue bound to
-// the generic inline continuation policy (concurrencpp does not support executor
+// Provides coro_util::qu_mpsc_bounded, the coro_util::impl::qu_mpsc_bounded queue bound
+// to the generic inline continuation policy (concurrencpp does not support executor
 // affinity).
 
 #include "../inline/policy.hpp"
@@ -16,7 +16,7 @@
 namespace coro_util {
 
 template <typename T, typename Config = coro_util::qu_mpsc_bounded_default_config>
-using qu_mpsc_bounded = coro_util::qu_mpsc_bounded_impl<
-  coro_util::detail::inline_continuation_policy, T, Config>;
+using qu_mpsc_bounded = coro_util::impl::qu_mpsc_bounded<
+  coro_util::impl::inline_continuation_policy, T, Config>;
 
 } // namespace coro_util

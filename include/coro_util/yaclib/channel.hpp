@@ -16,13 +16,13 @@ namespace coro_util {
 
 template <typename T, typename Config = coro_util::chan_default_config>
 using chan_tok =
-  coro_util::chan_tok_impl<coro_util::detail::yaclib_continuation_policy, T, Config>;
+  coro_util::impl::chan_tok<coro_util::impl::yaclib_continuation_policy, T, Config>;
 
 /// Creates a new channel and returns an access token to it.
 template <typename T, typename Config = coro_util::chan_default_config>
 inline chan_tok<T, Config> make_channel() noexcept {
-  return coro_util::detail::make_channel<
-    coro_util::detail::yaclib_continuation_policy, T, Config>();
+  return coro_util::impl::make_channel<
+    coro_util::impl::yaclib_continuation_policy, T, Config>();
 }
 
 } // namespace coro_util
