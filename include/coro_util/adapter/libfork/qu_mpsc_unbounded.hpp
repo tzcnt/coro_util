@@ -7,7 +7,7 @@
 
 // Provides coro_util::qu_mpsc_unbounded, the qu_mpsc_unbounded_impl queue bound
 // to the generic inline continuation policy (executor affinity is restored by
-// coro_util::lf_queue_op() - see op.hpp).
+// coro_util::lf_wrap() - see op.hpp).
 
 #include "../inline/policy.hpp"
 

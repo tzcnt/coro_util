@@ -7,7 +7,7 @@
 
 // Provides coro_util::qu_spsc_bounded, the qu_spsc_bounded_impl queue bound to
 // the generic inline continuation policy (executor affinity is restored by
-// coro_util::asio_queue_op() - see op.hpp).
+// coro_util::asio_wrap() - see op.hpp).
 
 #include "../inline/policy.hpp"
 

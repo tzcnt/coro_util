@@ -64,8 +64,8 @@ Swapping libraries is just swapping the include directory: use
 | [YACLib](https://github.com/YACLib/YACLib) | [link](include/coro_util/adapter/yaclib) | ✅ | ❌ |
 | [Boost.Cobalt](https://github.com/boostorg/cobalt) | [link](include/coro_util/adapter/cobalt) | ✅ | ❌ |
 | [Asio / Boost.Asio](https://github.com/chriskohlhoff/asio) | [link](include/coro_util/adapter/asio) | ✅¹ ² | ❌ |
-| [libfork](https://github.com/ConorWilliams/libfork) | [link](include/coro_util/adapter/libfork) | ✅² | ❌ |
 | [Boost.Capy](https://github.com/cppalliance/capy) | [link](include/coro_util/adapter/capy) | ✅² | ❌ |
+| [libfork](https://github.com/ConorWilliams/libfork) | [link](include/coro_util/adapter/libfork) | ✅² | ❌ |
 | [concurrencpp](https://github.com/David-Haim/concurrencpp) | [link](include/coro_util/adapter/concurrencpp) | ❌ | ❌ |
 | [cppcoro](https://github.com/andreasbuhr/cppcoro) | [link](include/coro_util/adapter/cppcoro) | ❌ | ❌ |
 | [libcoro](https://github.com/jbaldwin/libcoro) | [link](include/coro_util/adapter/libcoro) | ❌ | ❌ |
@@ -76,9 +76,9 @@ both the `awaitable<T>` and `experimental::coro<>` coroutine types of each.
 
 ² These have a closed `await_transform` and cannot `co_await` a foreign
 awaitable directly, so each queue/channel operation must be wrapped at the call
-site: `co_await coro_util::asio_queue_op(q.pull())` for Asio,
-`co_await coro_util::lf_queue_op(q.pull())` for libfork,
-`co_await coro_util::capy_queue_op(q.pull())` for Capy.
+site: `co_await coro_util::asio_wrap(q.pull())` for Asio,
+`co_await coro_util::lf_wrap(q.pull())` for libfork,
+`co_await coro_util::capy_wrap(q.pull())` for Capy.
 
 ## Adapting for Another Library
 Want to use these queues with another library that doesn't have an adapter yet? Simply follow these instructions:

@@ -10,7 +10,7 @@
 // lf::task's promise has a CLOSED set of await_transform overloads (co_new,
 // context_switcher, join, fork/call packets, just), so the coro_util
 // queue/channel awaitables (a foreign awaiter) cannot be co_awaited inside an
-// lf::task directly. lf_queue_op() bridges the gap by presenting the queue
+// lf::task directly. lf_wrap() bridges the gap by presenting the queue
 // awaitable to libfork as an lf::core::context_switcher - the one open extension
 // point libfork's await_transform accepts for arbitrary awaitables. It is driven
 // by a small detached coroutine whose own promise has no await_transform and
@@ -18,11 +18,11 @@
 //
 // Usage, inside any lf::task<T> coroutine:
 //
-//   while (auto data = co_await coro_util::lf_queue_op(q.pull())) {
+//   while (auto data = co_await coro_util::lf_wrap(q.pull())) {
 //     consume(data.value());
 //   }
 //
-//   co_await coro_util::lf_queue_op(q.push(value));
+//   co_await coro_util::lf_wrap(q.push(value));
 //
 // Executor affinity: when the coroutine suspends, libfork hands the context
 // switcher an lf::submit_handle for it. We capture the worker_context the
@@ -150,8 +150,7 @@ template <typename Awaitable> struct queue_op : result_storage<result_t<Awaitabl
 /// q.push_bulk(...)) so it can be co_awaited inside an lf::task<T> coroutine.
 /// Returns an lf::core::context_switcher that yields the same value the wrapped
 /// awaitable would. See the file header for usage and affinity notes.
-template <typename Awaitable>
-libfork_detail::queue_op<Awaitable> lf_queue_op(Awaitable Aw) {
+template <typename Awaitable> libfork_detail::queue_op<Awaitable> lf_wrap(Awaitable Aw) {
   return libfork_detail::queue_op<Awaitable>{std::move(Aw)};
 }
 

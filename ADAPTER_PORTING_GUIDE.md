@@ -379,7 +379,7 @@ normal policy.)
    The host's suspend hook then hands you a handle/token you use to resume the
    host once the driver completes.
 
-`<lib>_queue_op(awaitable)` is the wrapper function the user calls; it returns
+`<lib>_wrap(awaitable)` is the wrapper function the user calls; it returns
 whatever the door expects. The queues stay bound to the **inline policy** (alias
 headers identical to an affinity-less library, §4) — affinity is restored by the
 wrapper, not by a policy.
@@ -443,8 +443,8 @@ of a policy's `resume()`.
 
 Unlike a policy adapter (transparent `co_await q.pull()`), the wrapper is
 **visible in user code**: every suspending op must be wrapped —
-`co_await coro_util::<lib>_queue_op(q.pull())`,
-`co_await coro_util::<lib>_queue_op(q.push(x))`. Non-suspending `post()` (channel
+`co_await coro_util::<lib>_wrap(q.pull())`,
+`co_await coro_util::<lib>_wrap(q.push(x))`. Non-suspending `post()` (channel
 / unbounded MPSC producer) needs no wrapper. Note the `push()` lifetime caveat:
 `q.push(args...)` binds references to `args`, which must outlive the co_await.
 
@@ -484,7 +484,7 @@ Wrapper route instead (§7), when the library has a closed `await_transform`:
 - [ ] Found the host coroutine's extension-point "door" (async-op concept,
       context-switcher, etc.) — **or confirmed none exists**, making it un-adaptable.
 - [ ] Driver coroutine written (no `await_transform`; `suspend_never` both ends).
-- [ ] `<lib>_queue_op()` wrapper presents the op through the door; void and value
+- [ ] `<lib>_wrap()` wrapper presents the op through the door; void and value
       result paths both handled.
 - [ ] Affinity restored in the wrapper: host executor captured at suspend, host
       re-dispatched onto it (`post`/`schedule`) on completion.

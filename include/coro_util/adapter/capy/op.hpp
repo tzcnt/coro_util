@@ -13,7 +13,7 @@
 // static_assert-s "requires IoAwaitable" for anything else. So the coro_util
 // queue/channel awaitables (a foreign awaiter with the ordinary
 // await_suspend(handle) signature) cannot be co_awaited inside a capy::task
-// directly. capy_queue_op() bridges the gap by presenting the queue awaitable to
+// directly. capy_wrap() bridges the gap by presenting the queue awaitable to
 // Capy as an IoAwaitable - the one extension point task's await_transform
 // accepts for an arbitrary operation. It is driven by a small detached coroutine
 // whose own promise has no await_transform and therefore CAN co_await the queue
@@ -21,11 +21,11 @@
 //
 // Usage, inside any boost::capy::task<T> coroutine:
 //
-//   while (auto data = co_await coro_util::capy_queue_op(q.pull())) {
+//   while (auto data = co_await coro_util::capy_wrap(q.pull())) {
 //     consume(data.value());
 //   }
 //
-//   co_await coro_util::capy_queue_op(q.push(value));
+//   co_await coro_util::capy_wrap(q.push(value));
 //
 // Executor affinity: the IoAwaitable protocol hands await_suspend the
 // coroutine's io_env, whose executor is the one the task is bound to. We capture
@@ -116,8 +116,7 @@ drive_value(Awaitable Aw, queue_op<Awaitable>* Self, boost::capy::executor_ref E
 // An IoAwaitable that adapts a coro_util queue awaitable. capy::task recognizes
 // it through its transform_awaitable (which requires the IoAwaitable protocol)
 // and, on suspension, hands await_suspend the coroutine's io_env.
-template <typename Awaitable>
-struct queue_op : result_storage<result_t<Awaitable>> {
+template <typename Awaitable> struct queue_op : result_storage<result_t<Awaitable>> {
   using R = result_t<Awaitable>;
 
   Awaitable aw;
@@ -132,9 +131,8 @@ struct queue_op : result_storage<result_t<Awaitable>> {
   // the continuation must be captured before any result is produced.
   bool await_ready() const noexcept { return false; }
 
-  std::coroutine_handle<> await_suspend(
-    std::coroutine_handle<> Handle, boost::capy::io_env const* Env
-  ) noexcept {
+  std::coroutine_handle<>
+  await_suspend(std::coroutine_handle<> Handle, boost::capy::io_env const* Env) noexcept {
     cont.h = Handle;
     boost::capy::executor_ref Ex = Env->executor;
     if constexpr (std::is_void_v<R>) {
@@ -158,8 +156,7 @@ struct queue_op : result_storage<result_t<Awaitable>> {
 /// q.push_bulk(...)) so it can be co_awaited inside a boost::capy::task<T>
 /// coroutine. Returns an IoAwaitable that yields the same value the wrapped
 /// awaitable would. See the file header for usage and affinity notes.
-template <typename Awaitable>
-capy_detail::queue_op<Awaitable> capy_queue_op(Awaitable Aw) {
+template <typename Awaitable> capy_detail::queue_op<Awaitable> capy_wrap(Awaitable Aw) {
   return capy_detail::queue_op<Awaitable>{std::move(Aw)};
 }
 

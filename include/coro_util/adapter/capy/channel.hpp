@@ -7,7 +7,7 @@
 
 // Provides coro_util::chan_tok and coro_util::make_channel, the channel access
 // token bound to the generic inline continuation policy (executor affinity is
-// restored by coro_util::capy_queue_op() - see op.hpp).
+// restored by coro_util::capy_wrap() - see op.hpp).
 
 #include "../inline/policy.hpp"
 

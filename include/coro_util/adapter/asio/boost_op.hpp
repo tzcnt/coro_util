@@ -13,7 +13,7 @@
 // CLOSED await_transform: each only accepts other asio coroutines of its own
 // kind, registered async operations, and this_coro::* tags, so the coro_util
 // queue/channel awaitables (a foreign awaiter) cannot be co_awaited inside them
-// directly. asio_queue_op() bridges the gap by presenting the queue awaitable to
+// directly. asio_wrap() bridges the gap by presenting the queue awaitable to
 // asio as a regular (deferred) async operation, which BOTH coroutine types adopt
 // through their shared is_async_operation door. It is driven by a small detached
 // coroutine whose own promise has no await_transform and therefore CAN co_await
@@ -21,11 +21,11 @@
 //
 // Usage, inside any boost::asio::awaitable<T> OR experimental::coro<> coroutine:
 //
-//   while (auto data = co_await coro_util::asio_queue_op(q.pull())) {
+//   while (auto data = co_await coro_util::asio_wrap(q.pull())) {
 //     consume(data.value());
 //   }
 //
-//   co_await coro_util::asio_queue_op(q.push(value));
+//   co_await coro_util::asio_wrap(q.push(value));
 //
 // Executor affinity: the completion is always posted back to the suspended
 // coroutine's associated executor (the io_context/strand it was spawned on), so
@@ -110,7 +110,7 @@ driver_task drive_value(Awaitable Aw, Handler H) {
 /// operation that yields the same value the wrapped awaitable would; the
 /// enclosing coroutine binds its own completion token when it co_awaits it. See
 /// the file header for usage and affinity notes.
-template <typename Awaitable> auto asio_queue_op(Awaitable Aw) {
+template <typename Awaitable> auto asio_wrap(Awaitable Aw) {
   using R = asio_detail::result_t<Awaitable>;
   // A non-const lvalue deferred token, named so it binds to async_initiate's
   // token parameter across asio versions (the explicit-CompletionToken overload
