@@ -26,6 +26,10 @@ All queues can be `close()` d, which immediately stops new producers, and also s
 | `qu_mpsc_unbounded` | MPSC unbounded queue |
 | `channel` | MPMC queue. accessed via `chan_tok` hazard pointer + shared ownership handle |
 
+## :page_facing_up: Documentation
+
+Lovingly hand-crafted documentation is available at [https://fleetcode.com/oss/coro_util/docs/queues/index.html](https://fleetcode.com/oss/coro_util/docs/queues/index.html).
+
 ## Usage
 
 Add `include/` to your include path, then include the queue header from the
