@@ -31,8 +31,8 @@ template <bool Padding> struct chan_config : coro_util::chan_default_config {
 
 // multiple tests in one to leverage the configuration options in one place
 template <bool ElementPadding, typename Executor>
-void do_chan_test(Executor& Exec, bool ReuseBlocks, bool TryPull) {
-  test_async_main(Exec, [](bool Reuse, bool Try) -> tmc::task<void> {
+void do_chan_test(Executor& Exec, bool TryPull) {
+  test_async_main(Exec, [](bool Try) -> tmc::task<void> {
     {
       // general test - single post
       static constexpr size_t NITEMS = 1000;
@@ -41,10 +41,7 @@ void do_chan_test(Executor& Exec, bool ReuseBlocks, bool TryPull) {
         size_t sum;
       };
 
-      auto chan =
-        coro_util::make_channel<size_t, chan_config<ElementPadding>>().set_reuse_blocks(
-          Reuse
-        );
+      auto chan = coro_util::make_channel<size_t, chan_config<ElementPadding>>();
 
       auto results = co_await tmc::spawn_tuple(
         [](auto Chan) -> tmc::task<size_t> {
@@ -103,10 +100,7 @@ void do_chan_test(Executor& Exec, bool ReuseBlocks, bool TryPull) {
         size_t sum;
       };
 
-      auto chan =
-        coro_util::make_channel<size_t, chan_config<ElementPadding>>().set_reuse_blocks(
-          Reuse
-        );
+      auto chan = coro_util::make_channel<size_t, chan_config<ElementPadding>>();
 
       auto results = co_await tmc::spawn_tuple(
         [](auto Chan) -> tmc::task<size_t> {
@@ -166,8 +160,7 @@ void do_chan_test(Executor& Exec, bool ReuseBlocks, bool TryPull) {
       std::atomic<size_t> count{0};
       {
         auto chan =
-          coro_util::make_channel<destructor_counter, chan_config<ElementPadding>>()
-            .set_reuse_blocks(Reuse);
+          coro_util::make_channel<destructor_counter, chan_config<ElementPadding>>();
         for (size_t i = 0; i < 12; ++i) {
           chan.post(destructor_counter{&count});
         }
@@ -183,10 +176,7 @@ void do_chan_test(Executor& Exec, bool ReuseBlocks, bool TryPull) {
     }
     {
       // producer post / post_bulk after chan closed
-      auto chan =
-        coro_util::make_channel<size_t, chan_config<ElementPadding>>().set_reuse_blocks(
-          Reuse
-        );
+      auto chan = coro_util::make_channel<size_t, chan_config<ElementPadding>>();
       chan.close();
       auto p = chan.post(5u);
       EXPECT_FALSE(p);
@@ -200,10 +190,7 @@ void do_chan_test(Executor& Exec, bool ReuseBlocks, bool TryPull) {
     }
     {
       // close while there is a waiting consumer
-      auto chan =
-        coro_util::make_channel<size_t, chan_config<ElementPadding>>().set_reuse_blocks(
-          Reuse
-        );
+      auto chan = coro_util::make_channel<size_t, chan_config<ElementPadding>>();
       std::array<tmc::task<void>, 5> cons;
       for (size_t i = 0; i < 5; ++i) {
         cons[i] = [](auto Chan) -> tmc::task<void> {
@@ -216,21 +203,17 @@ void do_chan_test(Executor& Exec, bool ReuseBlocks, bool TryPull) {
       chan.close();
       co_await std::move(t);
     }
-  }(ReuseBlocks, TryPull));
+  }(TryPull));
 }
 
 TEST_F(CATEGORY, config_sweep) {
-  do_chan_test<true>(ex(), false, false);
-  do_chan_test<true>(ex(), true, false);
-  do_chan_test<false>(ex(), false, false);
-  do_chan_test<false>(ex(), true, false);
+  do_chan_test<true>(ex(), false);
+  do_chan_test<false>(ex(), false);
 }
 
 TEST_F(CATEGORY, config_sweep_try_pull) {
-  do_chan_test<true>(ex(), false, true);
-  do_chan_test<true>(ex(), true, true);
-  do_chan_test<false>(ex(), false, true);
-  do_chan_test<false>(ex(), true, true);
+  do_chan_test<true>(ex(), true);
+  do_chan_test<false>(ex(), true);
 }
 
 // Running 1 consumer and 1 producer at the same time on a single thread
